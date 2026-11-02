@@ -91,11 +91,69 @@
     });
     return acc;
   }
+  // 再生全体を最初から少しずつ進めて、守りの体が攻めの体を通り抜けないようにする（スクリーンに引っかかる）
+  // 守りは smooth の位置を追いかけるが、自分のマーク以外の攻めにぶつかると、その場でほぼ止まり、ゆっくり回り込む
+  // 引っかかった直後はほぼ止まり、押し合う時間が長くなるほど速く回り込む（秒速0.4m → 最大2.6m）
+  const DT = 40, SPEED = 7.5, BODY = .75, SLIDE = .12;
+  const around = held => Math.min(2.6, .4 + held * 3.2);
+  // st は守り1人ぶんの状態：held＝引っかかっている時間（秒）、side＝回り込む向き（途中で変えない）
+  function step(p, goal, obs, st) {
+    let hit = false;
+    let mv = [goal[0] - p[0], goal[1] - p[1]];
+    const L = Math.hypot(mv[0], mv[1]), max = SPEED * DT / 1000;
+    if (L > max) mv = [mv[0] * max / L, mv[1] * max / L];
+    let q = [p[0] + mv[0], p[1] + mv[1]];
+    for (const o of obs) {
+      const d = dist(q, o);
+      if (d >= BODY) continue;
+      // ぶつかった：攻めの方へ進む分を消し、横へ滑る分だけ少し残す。行きたい方へ回り込む
+      const n = d > 1e-6 ? [(q[0] - o[0]) / d, (q[1] - o[1]) / d] : [p[0] - o[0] || 1, p[1] - o[1]];
+      const into = mv[0] * n[0] + mv[1] * n[1];
+      let tan = into < 0 ? [mv[0] - n[0] * into, mv[1] - n[1] * into] : mv;
+      tan = [tan[0] * SLIDE, tan[1] * SLIDE];
+      if (!st.side) st.side = (goal[0] - o[0]) * n[1] - (goal[1] - o[1]) * n[0] > 0 ? 1 : -1;
+      hit = true;
+      const a = around(st.held) * DT / 1000;
+      if (Math.hypot(tan[0], tan[1]) < a) tan = [-n[1] * st.side * a, n[0] * st.side * a];
+      q = [p[0] + tan[0], p[1] + tan[1]];
+      const d2 = dist(q, o);
+      if (d2 < BODY) { const m = d2 > 1e-6 ? [(q[0] - o[0]) / d2, (q[1] - o[1]) / d2] : n; q = [o[0] + m[0] * BODY, o[1] + m[1] * BODY]; }
+      mv = [q[0] - p[0], q[1] - p[1]];
+    }
+    if (hit) st.held += DT / 1000; else { st.held = 0; st.side = 0; }
+    return q;
+  }
+  function track(mode, sample, total) {
+    const frames = [], st = Object.fromEntries(DEF.map(x => [x, { held: 0, side: 0 }]));
+    let cur = null;
+    for (let t = 0; ; t += DT) {
+      const u = Math.min(t, total), s = sample(u), goal = smooth(mode, sample, u);
+      if (!cur) cur = goal;
+      else cur = Object.fromEntries(DEF.map((x, i) => {
+        // ぶつかる相手：マンツーマンなら自分のマーク以外の攻め、ゾーンなら攻め全員
+        const obs = OFF.filter((o, j) => isZone(mode) || j !== i).map(o => s.pos[o]).filter(Boolean);
+        return [x, step(cur[x], goal[x], obs, st[x])];
+      }));
+      // 守りどうしは重ならないように、近すぎたら半分ずつ離す（引っかかりはしない）
+      DEF.forEach((a, i) => DEF.slice(i + 1).forEach(b => {
+        const p = cur[a], q = cur[b], d = dist(p, q), gap = .85;
+        if (d >= gap) return;
+        const n = d > 1e-6 ? [(q[0] - p[0]) / d, (q[1] - p[1]) / d] : [0, 1], k = (gap - d) / 2;
+        cur[a] = [p[0] - n[0] * k, p[1] - n[1] * k]; cur[b] = [q[0] + n[0] * k, q[1] + n[1] * k];
+      }));
+      frames.push(cur);
+      if (t >= total) break;
+    }
+    return t => {
+      const k = Math.max(0, Math.min(frames.length - 1, t / DT)), i = Math.floor(k), j = Math.min(i + 1, frames.length - 1), w = k - i;
+      return Object.fromEntries(DEF.map(x => [x, frac(frames[i][x], frames[j][x], w)]));
+    };
+  }
   // 作戦の守り方：決めていなければ、守りの動きを録画してある作戦は「手動」、それ以外はマンツーマン
   function modeOf(play) {
     if (play.defense) return play.defense;
     return play.steps.some(s => s.moves.some(m => m.id && m.id[0] === 'x')) ? 'manual' : 'man';
   }
 
-  window.PBDefense = { MODES, isZone, at, smooth, modeOf };
+  window.PBDefense = { MODES, isZone, at, smooth, track, modeOf };
 })();

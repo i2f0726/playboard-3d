@@ -1099,8 +1099,12 @@ function withAutoDef(pos, holder, bp) {
 function frameAt(T, t) {
   const f = frameRaw(T, t);
   if (autoDef()) {
-    const sample = u => { const g = u === t ? f : frameRaw(T, u); return { pos: g.pos, ball: defBall(g.pos, g.holder, g.bp), holder: g.holder }; };
-    Object.assign(f.pos, PBDefense.smooth(defMode(), sample, t));
+    // 守りの動きは再生全体ぶんを最初に1回だけ計算しておく（スクリーンに引っかかるため、前の瞬間からの続きで決まる）
+    if (!T.def || T.defMode !== defMode()) {
+      const sample = u => { const g = frameRaw(T, u); return { pos: g.pos, ball: defBall(g.pos, g.holder, g.bp), holder: g.holder }; };
+      T.defMode = defMode(); T.def = PBDefense.track(T.defMode, sample, T.total);
+    }
+    Object.assign(f.pos, T.def(t));
   }
   return f;
 }

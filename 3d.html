@@ -321,8 +321,12 @@ function ballCourt(f) {
 function posWithDef(t) {
   const f = frameAt(T, t);
   if (defMode === 'manual') return f;
-  const sample = u => { const g = frameAt(T, u); return { pos: g.pos, ball: ballCourt(g), holder: g.holder }; };
-  Object.assign(f.pos, PBDefense.smooth(defMode, sample, t));
+  // 守りの動きは再生全体ぶんを最初に1回だけ計算しておく（スクリーンに引っかかるため、前の瞬間からの続きで決まる）
+  if (!T.def || T.defMode !== defMode) {
+    const sample = u => { const g = frameAt(T, u); return { pos: g.pos, ball: ballCourt(g), holder: g.holder }; };
+    T.defMode = defMode; T.def = PBDefense.track(defMode, sample, T.total);
+  }
+  Object.assign(f.pos, T.def(t));
   return f;
 }
 const angDiff = (a, b) => { let d = (b - a) % (Math.PI * 2); if (d > Math.PI) d -= Math.PI * 2; if (d < -Math.PI) d += Math.PI * 2; return d; };
