@@ -52,13 +52,18 @@ if errorlevel 1 (
     echo [dry] GitHub Pages を main ブランチで有効にする予定
     goto :done
   )
-  echo GitHub にリポジトリを作っています...
-  gh repo create %REPO% --public --source . --remote origin --push
-  if errorlevel 1 goto :fail
-  echo 公開ページ（GitHub Pages）を有効にしています...
-  gh api -X POST repos/%REPO%/pages -f "source[branch]=main" -f "source[path]=/" >nul
-  if errorlevel 1 goto :fail
-  goto :done
+  gh repo view %REPO% >nul 2>&1
+  if errorlevel 1 (
+    echo GitHub にリポジトリを作っています...
+    gh repo create %REPO% --public --source . --remote origin --push
+    if errorlevel 1 goto :fail
+  ) else (
+    echo GitHub にもうあるリポジトリにつなぎます...
+    git remote add origin https://github.com/%REPO%.git
+    git push -u origin main
+    if errorlevel 1 goto :fail
+  )
+  goto :pages
 )
 
 rem --- 3. アップロード ---
@@ -69,6 +74,17 @@ if defined DRY (
   echo GitHub へアップロードしています...
   git push
   if errorlevel 1 goto :fail
+)
+
+rem --- 公開ページ（GitHub Pages）がまだなら有効にする ---
+:pages
+if not defined DRY (
+  gh api repos/%REPO%/pages >nul 2>&1
+  if errorlevel 1 (
+    echo 公開ページ（GitHub Pages）を有効にしています...
+    gh api -X POST repos/%REPO%/pages -f "source[branch]=main" -f "source[path]=/" >nul
+    if errorlevel 1 goto :fail
+  )
 )
 
 :done
