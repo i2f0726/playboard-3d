@@ -10,6 +10,8 @@
   const toward = (a, b, m) => { const d = dist(a, b); if (d < 1e-6) return a.slice(); const k = Math.min(m, d) / d; return [a[0] + (b[0] - a[0]) * k, a[1] + (b[1] - a[1]) * k]; };
   const frac = (a, b, k) => [a[0] + (b[0] - a[0]) * k, a[1] + (b[1] - a[1]) * k];
   const inCourt = p => [Math.max(.3, Math.min(27.7, p[0])), Math.max(.3, Math.min(14.7, p[1]))];
+  // a〜b の間で 0→1 になめらかに変わる（立ち方を急に切り替えず、混ぜながら移る）
+  const ramp = (v, a, b) => { const k = Math.max(0, Math.min(1, (v - a) / (b - a))); return k * k * (3 - 2 * k); };
 
   const MODES = [
     { id: 'man', name: 'マンツーマン' },
@@ -32,13 +34,14 @@
       const p = pos[o];
       if (o === holder) { out[DEF[i]] = toward(p, goal, 1.0); return; }
       const dBall = dist(p, ball);
-      if (dBall < 6.5) {
-        // ディナイ：ボールの方へ1歩、少しゴール寄り（パスコースに手を出す位置）
-        out[DEF[i]] = toward(toward(p, ball, Math.min(1.1, dBall * .35)), goal, .5);
-      } else {
-        // ヘルプ：ボールと相手の間をゴール寄りに絞る（ボール・相手・自分の三角形）
-        out[DEF[i]] = frac(frac(p, ball, .3), goal, .38);
-      }
+      // パスが飛んでいる間（holder なし）は、ボールが近づくほどボールマンへのつき方に寄せる（受けた瞬間に飛ばない）
+      const onBall = holder ? 0 : 1 - ramp(dBall, .6, 2.5);
+      // ディナイ：ボールの方へ1歩、少しゴール寄り（パスコースに手を出す位置）
+      const deny = toward(toward(p, ball, Math.min(1.1, dBall * .35)), goal, .5);
+      // ヘルプ：ボールと相手の間をゴール寄りに絞る（ボール・相手・自分の三角形）
+      const help = frac(frac(p, ball, .3), goal, .38);
+      // 5.5m より近ければディナイ、7.5m より遠ければヘルプ。その間は混ぜる（境目で飛ばない）
+      out[DEF[i]] = frac(frac(deny, help, ramp(dBall, 5.5, 7.5)), toward(p, goal, 1.0), onBall);
     });
     return out;
   }
@@ -58,10 +61,11 @@
       return frac(shifted, ball, .15);
     });
     // ボールがシュート圏内なら、持ち場がいちばん近い人がボールへ出る（シュートしたボールは追わない）
-    if (dist(ball, goal) < 9.5 && dist(ball, goal) > 1.5) {
-      let j = 0;
-      spots.forEach((p, k) => { if (dist(p, ball) < dist(spots[j], ball)) j = k; });
-      spots[j] = toward(ball, goal, 1.0);
+    // 2人の近さが同じくらいの間は、2人とも少しずつ出て、受け持ちの交代がなめらかになるようにする
+    const dg = dist(ball, goal), reach = ramp(dg, 1.5, 2.5) * (1 - ramp(dg, 8.5, 9.5));
+    if (reach > 0) {
+      const ds = spots.map(p => dist(p, ball)), d1 = Math.min(...ds), on = toward(ball, goal, 1.0);
+      spots.forEach((p, k) => { const w = reach * (1 - ramp(ds[k] - d1, 0, 1.5)); if (w > 0) spots[k] = frac(p, on, w); });
     }
     const out = {};
     DEF.forEach((x, i) => out[x] = inCourt(spots[i]));
@@ -73,15 +77,18 @@
     const goal = goalOf(pos);
     return isZone(mode) ? zone(mode, pos, ball, goal) : man(pos, ball, holder, goal);
   }
-  // 再生中：少し前の瞬間を何回か見て平均する（守りは一瞬遅れて動き、急に飛ばない）
-  const LAGS = [120, 240, 360, 480];
+  // 再生中：少し前の瞬間を細かく見て平均する（守りは一瞬遅れて動き、急に飛ばない）
+  // パスを受けた・ボールマンが替わったなどで立ち位置が急に変わっても、約0.6秒かけて移る。まん中を重く数える
+  const LAGS = Array.from({ length: 16 }, (_, k) => 80 + k * 40);
+  const WEIGHTS = LAGS.map((_, k) => Math.min(k + 1, LAGS.length - k));
+  const WSUM = WEIGHTS.reduce((a, b) => a + b, 0);
   function smooth(mode, sample, t) {
     const acc = {};
     DEF.forEach(x => acc[x] = [0, 0]);
-    for (const lag of LAGS) {
-      const s = sample(Math.max(0, t - lag)), p = at(mode, s.pos, s.ball, s.holder);
-      DEF.forEach(x => { acc[x][0] += p[x][0] / LAGS.length; acc[x][1] += p[x][1] / LAGS.length; });
-    }
+    LAGS.forEach((lag, k) => {
+      const s = sample(Math.max(0, t - lag)), p = at(mode, s.pos, s.ball, s.holder), w = WEIGHTS[k] / WSUM;
+      DEF.forEach(x => { acc[x][0] += p[x][0] * w; acc[x][1] += p[x][1] * w; });
+    });
     return acc;
   }
   // 作戦の守り方：決めていなければ、守りの動きを録画してある作戦は「手動」、それ以外はマンツーマン
