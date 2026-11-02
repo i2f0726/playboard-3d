@@ -1,0 +1,527 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>作戦ボード 3D</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #0d1a22; overflow: hidden; font: 600 14px "Segoe UI", "Hiragino Sans", "Yu Gothic UI", sans-serif; color: #e8f4fa; }
+  #c { position: fixed; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
+  .panel { position: fixed; left: 50%; transform: translateX(-50%); width: min(560px, calc(100% - 16px)); box-sizing: border-box;
+    background: rgba(6, 20, 28, .78); backdrop-filter: blur(8px); border-radius: 14px; padding: 8px; }
+  #top { top: max(8px, env(safe-area-inset-top)); display: flex; gap: 8px; align-items: center; }
+  #hud { bottom: max(8px, env(safe-area-inset-bottom)); display: grid; gap: 6px; }
+  .row { display: flex; gap: 6px; align-items: center; }
+  .row > span { color: #8fb3c4; font-size: 12px; white-space: nowrap; }
+  button, select { font: inherit; color: #e8f4fa; background: #17323f; border: 0; border-radius: 999px; padding: 8px 10px; cursor: pointer; flex: 1; min-width: 0; white-space: nowrap; }
+  @media (max-width: 420px) { button, select { font-size: 12px; padding: 8px 4px; } }
+  button.on { background: #ffd21f; color: #1a1300; }
+  /* 「自由に回す」はいちばんの見どころなので、オレンジで光らせる（一度使うまでは、ゆっくり光が脈打つ） */
+  .cam-free { display: inline-flex; align-items: center; justify-content: center; gap: 4px; flex: 1.5; font-weight: 700; color: #fff;
+    background: linear-gradient(160deg, #ffb070 0%, #ff8a3d 45%, #c2410c 100%); box-shadow: 0 2px 0 #7a2c08, 0 0 14px rgba(255,138,61,.5); }
+  .cam-free.on { background: #fff3e8; color: #c2410c; box-shadow: 0 0 0 2px #ff8a3d, 0 0 18px rgba(255,138,61,.7); }
+  .cam-free.pulse { animation: freePulse 1.6s ease-in-out infinite; }
+  @keyframes freePulse { 50% { box-shadow: 0 2px 0 #7a2c08, 0 0 26px 4px rgba(255,138,61,.9); transform: translateY(-1px); } }
+  /* 自由モードに入ったときの操作の案内（数秒で消える） */
+  #freeHint { position: fixed; left: 50%; top: 42%; transform: translate(-50%, -50%); padding: 14px 18px; border-radius: 14px; background: rgba(6,20,28,.82); color: #fff;
+    text-align: center; line-height: 1.8; font-size: 14px; white-space: nowrap; pointer-events: none; transition: opacity .5s; backdrop-filter: blur(6px); }
+  #freeHint b { color: #ffb070; }
+  #freeHint.gone { opacity: 0; }
+  select { flex: 1; border-radius: 8px; }
+  #stepInfo { flex: 0 0 auto; color: #8fb3c4; font-size: 12px; }
+  #playBtn, #spd, #backBtn { flex: 0 0 auto; padding-left: 12px; padding-right: 12px; }
+  #seek { flex: 1; accent-color: #ffd21f; min-width: 0; }
+</style>
+<script type="importmap">
+{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+               "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/" } }
+</script>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="freeHint" class="gone" aria-live="polite"><b>自由に回す</b><br>ドラッグ … ぐるっと回す<br>2本指で広げる … 近づく<br>2本指でつまむ … 離れる</div>
+<div id="top" class="panel">
+  <button id="backBtn">← 戻る</button>
+  <select id="playSel"></select>
+  <span id="stepInfo"></span>
+</div>
+<div id="hud" class="panel">
+  <div class="row" id="cams">
+    <button data-cam="top">真上</button><button data-cam="tv">中継</button><button data-cam="ball">ボール</button><button data-cam="pov">選手目線</button><button data-cam="free" class="cam-free"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.3-5.6"/><path d="M20 4v4h-4"/></svg>自由に回す</button>
+  </div>
+  <div class="row" id="nums"><span>自分の番号</span></div>
+  <div class="row">
+    <button id="playBtn">❚❚</button>
+    <input id="seek" type="range" min="0" max="1000" value="0">
+    <button id="spd">×1</button>
+  </div>
+</div>
+<script src="defense.js"></script>
+<script src="playbook.js"></script>
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+// ===== 作戦データ（作戦ボード本体と同じ形・同じ計算） =====
+const BASKETS = [[1.575, 7.5], [26.425, 7.5]];
+const OFF = ['o1', 'o2', 'o3', 'o4', 'o5'], DEF = ['x1', 'x2', 'x3', 'x4', 'x5'];
+const PASS_MS = 500, SHOT_MS = 850, STEP_GAP = 250;
+const clone = o => JSON.parse(JSON.stringify(o));
+const dist = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]);
+const last = a => a[a.length - 1];
+function applyStep(s, step) {
+  for (const m of step.moves) {
+    if (m.k === 'run' || m.k === 'dribble') s.pos[m.id] = last(m.pts).slice(0, 2);
+    else if (m.k === 'pass') { s.holder = m.to; s.ball = null; }
+    else if (m.k === 'shot') { s.ball = nearBasket(s.pos[m.from]); s.holder = null; }
+  }
+  return s;
+}
+function stateAt(play, n) {
+  const s = { pos: clone(play.init.pos), holder: play.init.holder, ball: null };
+  for (let i = 0; i < n; i++) applyStep(s, play.steps[i]);
+  return s;
+}
+const nearBasket = p => dist(p, BASKETS[0]) < dist(p, BASKETS[1]) ? BASKETS[0].slice() : BASKETS[1].slice();
+function interp(pts, t) {
+  if (t <= 0) return pts[0].slice(0, 2);
+  for (let i = 1; i < pts.length; i++) if (pts[i][2] >= t) {
+    const a = pts[i - 1], b = pts[i], k = (t - a[2]) / Math.max(1, b[2] - a[2]);
+    return [a[0] + (b[0] - a[0]) * k, a[1] + (b[1] - a[1]) * k];
+  }
+  return last(pts).slice(0, 2);
+}
+function timeline(play) {
+  const tl = []; let t = 0;
+  play.steps.forEach((step, i) => {
+    if (!step.moves.length) return;
+    const S = stateAt(play, i);
+    const A = Math.max(0, ...step.moves.filter(m => m.pts).map(m => last(m.pts)[2]));
+    // パス・シュートは、ふつうは走り終わってから順番に。at（ミリ秒）があれば、走っている途中のその時刻に出す
+    let s = A;
+    const B = step.moves.filter(m => !m.pts).map(m => {
+      const b = { m, dur: m.k === 'shot' ? SHOT_MS : PASS_MS, s: m.at != null ? m.at : s };
+      s = b.s + b.dur; return b;
+    });
+    const total = Math.max(A, ...B.map(b => b.s + b.dur)) + STEP_GAP;
+    tl.push({ i, S, A, B, total, start: t }); t += total;
+  });
+  return { tl, total: t };
+}
+// t ミリ秒の状態：選手の位置・ボールを持っている人・飛んでいるボール
+function frameAt(T, t) {
+  const seg = T.tl.find(s => t < s.start + s.total) || last(T.tl);
+  const local = Math.min(Math.max(0, t - seg.start), seg.total), S = seg.S, step = play.steps[seg.i];
+  const pos = clone(S.pos);
+  for (const m of step.moves) if (m.pts) pos[m.id] = interp(m.pts, local);
+  let holder = S.holder, ball = S.ball ? S.ball.slice() : null, flight = null;
+  for (const { m, dur, s } of seg.B) {
+    if (local < s) break;
+    if (local < s + dur) { flight = { m, k: (local - s) / dur }; break; }
+    if (m.k === 'pass') holder = m.to; else { holder = null; ball = nearBasket(pos[m.from]); }
+  }
+  const dribbling = !flight && step.moves.some(m => m.k === 'dribble' && m.id === holder && local < last(m.pts)[2]);
+  return { pos, holder, ball, flight, dribbling, seg, local };
+}
+
+// ===== 読み込み（作戦ボードで保存した作戦があれば一緒に並べる） =====
+let saved = [];
+try { saved = Object.values(JSON.parse(localStorage.getItem('pb-plays') || '{}') || {}); } catch (e) {}
+const usable = p => p && p.steps && p.steps.some(s => s.moves.length);
+// 作戦ボードの上に重ねて開かれたときは、作戦ボードから今の作戦と自分の番号を受け取って最初に出す
+const embedded = window.parent !== window;
+let PLAYS = [], play, T, defMode;
+
+// ===== 3Dの舞台 =====
+const W = (p, y = 0) => new THREE.Vector3(p[0] - 14, y, p[1] - 7.5);   // コート座標(m) → 3D座標
+const canvas = document.getElementById('c');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+const scene = new THREE.Scene();
+scene.background = new THREE.Color('#0d1a22');
+scene.fog = new THREE.Fog('#0d1a22', 45, 90);
+const camera = new THREE.PerspectiveCamera(45, 1, 0.05, 200);
+const controls = new OrbitControls(camera, canvas);
+controls.enabled = false;
+controls.maxPolarAngle = Math.PI / 2 - 0.05;
+// 指でさわったら自動回転を止め、案内も消す
+controls.addEventListener('start', () => { controls.autoRotate = false; document.getElementById('freeHint').classList.add('gone'); });
+// まだ自由モードを使ったことがなければ、ボタンをゆっくり光らせる
+try { if (!localStorage.getItem('pb-free-seen')) document.querySelector('.cam-free').classList.add('pulse'); } catch (e) {}
+
+scene.add(new THREE.HemisphereLight('#ffffff', '#3a4a55', 1.6));
+const sun = new THREE.DirectionalLight('#fff4e0', 2.2);
+sun.position.set(6, 22, 10);
+sun.castShadow = true;
+sun.shadow.mapSize.set(2048, 2048);
+Object.assign(sun.shadow.camera, { left: -18, right: 18, top: 12, bottom: -12, near: 1, far: 60 });
+scene.add(sun);
+
+// 床：木目とコートのラインを1枚の絵にして貼る
+function courtTexture() {
+  const S = 64, M = 2, Wd = (28 + M * 2) * S, Ht = (15 + M * 2) * S;
+  const cv = document.createElement('canvas'); cv.width = Wd; cv.height = Ht;
+  const g = cv.getContext('2d');
+  let seed = 3; const rnd = () => (seed = seed * 16807 % 2147483647) / 2147483647;
+  const plank = 0.22 * S;
+  for (let y = 0; y < Ht; y += plank) {
+    for (let x = -rnd() * 300; x < Wd;) {
+      const len = (1.8 + rnd() * 3) * S;
+      g.fillStyle = `hsl(${30 + rnd() * 6},${48 + rnd() * 10}%,${58 + rnd() * 8}%)`;
+      g.fillRect(x, y, len - 2, plank - 2); x += len;
+    }
+  }
+  g.fillStyle = 'rgba(70,35,10,.35)';
+  g.fillRect(0, 0, Wd, M * S); g.fillRect(0, Ht - M * S, Wd, M * S); g.fillRect(0, M * S, M * S, Ht - 2 * M * S); g.fillRect(Wd - M * S, M * S, M * S, Ht - 2 * M * S);
+  g.translate(M * S, M * S); g.scale(S, S);
+  g.fillStyle = 'rgba(10,143,214,.6)';
+  g.fillRect(0, 5.05, 5.8, 4.9); g.fillRect(28 - 5.8, 5.05, 5.8, 4.9);
+  g.strokeStyle = '#ffffff'; g.lineWidth = .07; g.lineCap = 'round';
+  const side = () => {
+    g.beginPath(); g.moveTo(0, 5.05); g.lineTo(5.8, 5.05); g.lineTo(5.8, 9.95); g.lineTo(0, 9.95); g.stroke();
+    g.beginPath(); g.arc(5.8, 7.5, 1.8, -Math.PI / 2, Math.PI / 2); g.stroke();
+    g.setLineDash([.3, .25]); g.beginPath(); g.arc(5.8, 7.5, 1.8, Math.PI / 2, Math.PI * 1.5); g.stroke(); g.setLineDash([]);
+    const a = Math.asin(6.6 / 6.75);
+    g.beginPath(); g.moveTo(0, .9); g.lineTo(1.575 + 6.75 * Math.cos(a), .9); g.arc(1.575, 7.5, 6.75, -a, a); g.lineTo(0, 14.1); g.stroke();
+    g.beginPath(); g.moveTo(1.2, 6.25); g.lineTo(1.575, 6.25); g.arc(1.575, 7.5, 1.25, -Math.PI / 2, Math.PI / 2); g.lineTo(1.2, 8.75); g.stroke();
+  };
+  side(); g.save(); g.translate(28, 0); g.scale(-1, 1); side(); g.restore();
+  g.strokeRect(0, 0, 28, 15);
+  g.beginPath(); g.moveTo(14, 0); g.lineTo(14, 15); g.stroke();
+  g.beginPath(); g.arc(14, 7.5, 1.8, 0, Math.PI * 2); g.stroke();
+  const tex = new THREE.CanvasTexture(cv);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.anisotropy = renderer.capabilities.getMaxAnisotropy();
+  return tex;
+}
+const floor = new THREE.Mesh(new THREE.PlaneGeometry(32, 19), new THREE.MeshStandardMaterial({ map: courtTexture(), roughness: .55 }));
+floor.rotation.x = -Math.PI / 2; floor.receiveShadow = true; scene.add(floor);
+const ground = new THREE.Mesh(new THREE.PlaneGeometry(120, 80), new THREE.MeshStandardMaterial({ color: '#16252e', roughness: 1 }));
+ground.rotation.x = -Math.PI / 2; ground.position.y = -0.01; ground.receiveShadow = true; scene.add(ground);
+
+// ゴール（ボード・リング・ネット・支柱）
+const mWhite = new THREE.MeshStandardMaterial({ color: '#f4f4f4', roughness: .5 });
+const mRim = new THREE.MeshStandardMaterial({ color: '#ff6a1a', roughness: .4, metalness: .3 });
+const mPost = new THREE.MeshStandardMaterial({ color: '#2b3b46', roughness: .7 });
+const lWhite = new THREE.LineBasicMaterial({ color: '#ffffff' });
+function addHoop(sx) {
+  const g = new THREE.Group(), add = (geo, mat, x, y, z = 0) => { const m = new THREE.Mesh(geo, mat); m.position.set(x, y, z); m.castShadow = true; g.add(m); return m; };
+  const ringX = sx * 12.425, boardX = sx * 12.8, postX = sx * 15.3;
+  const board = add(new THREE.BoxGeometry(.05, 1.05, 1.8), new THREE.MeshStandardMaterial({ color: '#cfe8f5', transparent: true, opacity: .35, roughness: .1 }), boardX, 3.425);
+  board.castShadow = false;
+  const edge = new THREE.LineSegments(new THREE.EdgesGeometry(board.geometry), lWhite); edge.position.copy(board.position); g.add(edge);
+  const inner = new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.PlaneGeometry(.59, .45)), lWhite);
+  inner.rotation.y = Math.PI / 2; inner.position.set(boardX - sx * .03, 3.275, 0); g.add(inner);
+  const ring = add(new THREE.TorusGeometry(.225, .014, 8, 40), mRim, ringX, 3.05); ring.rotation.x = Math.PI / 2;
+  add(new THREE.BoxGeometry(.15, .03, .1), mRim, sx * 12.69, 3.05);
+  const net = new THREE.Mesh(new THREE.CylinderGeometry(.225, .13, .42, 14, 3, true), new THREE.MeshBasicMaterial({ color: '#ffffff', wireframe: true, transparent: true, opacity: .7 }));
+  net.position.set(ringX, 2.83, 0); g.add(net);
+  add(new THREE.BoxGeometry(Math.abs(postX - boardX), .12, .12), mPost, (postX + boardX) / 2, 3.3);
+  add(new THREE.BoxGeometry(.18, 3.36, .18), mPost, postX, 1.68);
+  add(new THREE.BoxGeometry(1.2, .3, 1.2), mPost, postX + sx * .3, .15);
+  scene.add(g);
+}
+addHoop(-1); addHoop(1);
+
+// ===== 選手（シンプルな人形） =====
+const COL = { o: '#0a8fd6', x: '#e5484d', self: '#ffd21f' };
+const mSkin = new THREE.MeshStandardMaterial({ color: '#e7c09a', roughness: .8 });
+function numberTexture(n, fill) {
+  const cv = document.createElement('canvas'); cv.width = cv.height = 128;
+  const g = cv.getContext('2d');
+  g.fillStyle = fill; g.beginPath(); g.arc(64, 64, 56, 0, Math.PI * 2); g.fill();
+  g.lineWidth = 8; g.strokeStyle = '#ffffff'; g.stroke();
+  g.fillStyle = [COL.self, '#facc15', '#f8fafc'].includes(fill) ? '#1a1300' : '#ffffff';   // 黄・白の地には黒い数字 g.font = 'bold 76px Segoe UI, sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
+  g.fillText(n, 64, 68);
+  const t = new THREE.CanvasTexture(cv); t.colorSpace = THREE.SRGBColorSpace; return t;
+}
+function capsule(r, len, mat) { const m = new THREE.Mesh(new THREE.CapsuleGeometry(r, len, 4, 10), mat); m.castShadow = true; return m; }
+function makePlayer(id) {
+  const side = id[0], color = COL[side];
+  const mJersey = new THREE.MeshStandardMaterial({ color, roughness: .6 });
+  const g = new THREE.Group(), body = new THREE.Group(); g.add(body);
+  const limb = (x, y, r, len, mat) => { const pivot = new THREE.Group(); pivot.position.set(x, y, 0); const c = capsule(r, len, mat); c.position.y = -len / 2 - r; pivot.add(c); body.add(pivot); return pivot; };
+  const legL = limb(-.1, .8, .075, .55, mSkin), legR = limb(.1, .8, .075, .55, mSkin);
+  const shorts = capsule(.17, .12, mJersey); shorts.position.y = .82; body.add(shorts);
+  const torso = capsule(.18, .38, mJersey); torso.position.y = 1.15; body.add(torso);
+  const head = new THREE.Mesh(new THREE.SphereGeometry(.125, 16, 12), mSkin); head.position.y = 1.6; head.castShadow = true; body.add(head);
+  const nose = new THREE.Mesh(new THREE.SphereGeometry(.03, 8, 6), mSkin); nose.position.set(0, 1.6, .125); body.add(nose);
+  const armL = limb(-.25, 1.38, .05, .45, mSkin), armR = limb(.25, 1.38, .05, .45, mSkin);
+  const ringMat = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: .85 });
+  const ring = new THREE.Mesh(new THREE.RingGeometry(.32, .4, 32), ringMat); ring.rotation.x = -Math.PI / 2; ring.position.y = .015; g.add(ring);
+  const n = id.slice(1);
+  const spriteMat = new THREE.SpriteMaterial({ map: numberTexture(n, color) });
+  const sprite = new THREE.Sprite(spriteMat); sprite.scale.set(.48, .48, 1); sprite.position.y = 2.1; g.add(sprite);
+  scene.add(g);
+  return { id, g, body, legL, legR, armL, armR, ring, ringMat, spriteMat, mJersey, side, n, face: side === 'o' ? Math.PI / 2 : -Math.PI / 2, phase: 0 };
+}
+const players = {};
+[...OFF, ...DEF].forEach(id => players[id] = makePlayer(id));
+let selfId = 'o1';
+function paintSelf() {
+  for (const p of Object.values(players)) {
+    const me = p.id === selfId, c = me ? COL.self : COL[p.side];
+    p.ringMat.color.set(c);
+    p.spriteMat.map = numberTexture(p.n, c); p.spriteMat.needsUpdate = true;
+  }
+}
+
+const ball = new THREE.Mesh(new THREE.SphereGeometry(.12, 20, 14), new THREE.MeshStandardMaterial({ color: '#e8691c', roughness: .7 }));
+ball.castShadow = true; scene.add(ball);
+
+// 今のステップの動き（走る線・パスの線）を床に描く
+const pathGroup = new THREE.Group(); scene.add(pathGroup);
+// 練習の道具：パイロン（三角すい）・マーカー（平たい円盤）・ペンの線（床に描く）
+const itemGroup = new THREE.Group(); scene.add(itemGroup);
+const mCone = new THREE.MeshStandardMaterial({ color: '#ff7a1a', roughness: .6 }), mMarker = new THREE.MeshStandardMaterial({ color: '#ffd21f', roughness: .6 });
+function drawItems() {
+  itemGroup.clear();
+  for (const it of play.items || []) {
+    if (it.t === 'cone') {
+      const c = new THREE.Mesh(new THREE.ConeGeometry(.16, .42, 18), mCone); c.position.copy(W([it.x, it.y], .23)); c.castShadow = true; itemGroup.add(c);
+      const b = new THREE.Mesh(new THREE.BoxGeometry(.36, .03, .36), mCone); b.position.copy(W([it.x, it.y], .015)); itemGroup.add(b);
+    } else {
+      const m = new THREE.Mesh(new THREE.CylinderGeometry(.2, .22, .03, 24), mMarker); m.position.copy(W([it.x, it.y], .015)); itemGroup.add(m);
+    }
+  }
+  for (const mk of play.marks || []) {
+    itemGroup.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(mk.pts.map(p => W(p, .025))), new THREE.LineBasicMaterial({ color: '#ff3b6b' })));
+  }
+}
+let pathSeg = -1;
+function drawPaths(f) {
+  if (pathSeg === f.seg.i) return;
+  pathSeg = f.seg.i;
+  pathGroup.clear();
+  const step = play.steps[f.seg.i], end = applyStep(clone(f.seg.S), step).pos;
+  const line = (pts, color, dashed) => {
+    const geo = new THREE.BufferGeometry().setFromPoints(pts);
+    const mat = dashed ? new THREE.LineDashedMaterial({ color, dashSize: .3, gapSize: .2 }) : new THREE.LineBasicMaterial({ color });
+    const l = new THREE.Line(geo, mat); if (dashed) l.computeLineDistances(); pathGroup.add(l);
+  };
+  for (const m of step.moves) {
+    if (m.pts) line(m.pts.map(p => W(p, .03)), m.id === selfId ? COL.self : '#063d5c', m.k === 'dribble');
+    else if (m.k === 'pass') line([W(end[m.from], .03), W(end[m.to], .03)], '#ffffff', true);
+    else if (m.k === 'shot') line([W(end[m.from], .03), W(nearBasket(end[m.from]), .03)], '#ff6a1a', true);
+  }
+}
+
+// ===== 1コマぶんの更新 =====
+// ボールのコート上の位置（飛んでいる間はパスの線の上）
+function ballCourt(f) {
+  if (f.flight) {
+    const { m, k } = f.flight, a = m.from ? f.pos[m.from] : (f.ball || [14, 7.5]), b = m.k === 'pass' ? f.pos[m.to] : nearBasket(f.pos[m.from]);
+    return [a[0] + (b[0] - a[0]) * k, a[1] + (b[1] - a[1]) * k];
+  }
+  return f.holder ? f.pos[f.holder] : (f.ball || [14, 7.5]);
+}
+// 守りは作戦の「守り方」（マンツーマン・ゾーン）に合わせて、少し遅れて動く。「手動」なら録画した動きのまま
+function posWithDef(t) {
+  const f = frameAt(T, t);
+  if (defMode === 'manual') return f;
+  const sample = u => { const g = frameAt(T, u); return { pos: g.pos, ball: ballCourt(g), holder: g.holder }; };
+  Object.assign(f.pos, PBDefense.smooth(defMode, sample, t));
+  return f;
+}
+const angDiff = (a, b) => { let d = (b - a) % (Math.PI * 2); if (d > Math.PI) d -= Math.PI * 2; if (d < -Math.PI) d += Math.PI * 2; return d; };
+const ringPos = p => W(nearBasket(p), 3.05);
+function handPos(id) {
+  const p = players[id];
+  return p.g.position.clone().add(new THREE.Vector3(Math.sin(p.face) * .34, 1.05, Math.cos(p.face) * .34));
+}
+let lastBall = new THREE.Vector3();
+function updateScene(t, dt) {
+  const f = posWithDef(t), prev = posWithDef(Math.max(0, t - 120));
+  drawPaths(f);
+  const ballGuess = f.holder ? W(f.pos[f.holder]) : f.flight && f.flight.m.to ? W(f.pos[f.flight.m.to]) : lastBall;
+  for (const id of [...OFF, ...DEF]) {
+    const p = players[id];
+    p.g.visible = (id[0] === 'o' || play.showDef) && (!play.use || play.use.includes(id));
+    if (!p.g.visible) continue;
+    const q = f.pos[id], q0 = prev.pos[id];
+    p.g.position.copy(W(q));
+    const vx = (q[0] - q0[0]) / .12, vz = (q[1] - q0[1]) / .12, spd = Math.hypot(vx, vz);
+    let want;
+    // 自動の守りは横に滑るように動き、いつもボールの方を向く
+    const faceBall = id[0] === 'x' && defMode !== 'manual';
+    if (spd > .5 && !faceBall) want = Math.atan2(vx, vz);
+    else {
+      // ボールを持っていればゴール、それ以外はボールの方を向く
+      const look = f.holder === id ? ringPos(q) : ballGuess;
+      want = Math.atan2(look.x - p.g.position.x, look.z - p.g.position.z);
+    }
+    p.face += angDiff(p.face, want) * (1 - Math.exp(-dt * 10));
+    p.g.rotation.y = p.face;
+    const run = Math.min(1, spd / 3);
+    p.phase += spd * dt * 3.2;
+    const sw = Math.sin(p.phase) * .8 * run;
+    p.legL.rotation.x = sw; p.legR.rotation.x = -sw;
+    p.armL.rotation.x = -sw * .8; p.armR.rotation.x = sw * .8;
+    p.body.position.y = Math.abs(Math.sin(p.phase)) * .06 * run;
+    p.body.rotation.x = .12 * run;
+    if (f.holder === id && !f.dribbling) p.armR.rotation.x = -.9;
+  }
+  // ボール
+  const fl = f.flight;
+  if (fl) {
+    const k = fl.k, e = k < .5 ? 2 * k * k : 1 - Math.pow(-2 * k + 2, 2) / 2;
+    if (fl.m.k === 'pass') {
+      const a = fl.m.from ? handPos(fl.m.from) : lastBall.clone(), b = handPos(fl.m.to);
+      ball.position.lerpVectors(a, b, e); ball.position.y += Math.sin(Math.PI * k) * .45;
+    } else {
+      const a = handPos(fl.m.from); a.y = 2.3;
+      const b = ringPos(f.pos[fl.m.from]); b.y = 3.2;
+      ball.position.lerpVectors(a, b, k); ball.position.y += Math.sin(Math.PI * k) * 2.2;
+    }
+  } else if (f.holder) {
+    ball.position.copy(handPos(f.holder));
+    if (f.dribbling) ball.position.y = .12 + Math.abs(Math.sin(t * .0075)) * .85;
+  } else if (f.ball) ball.position.copy(W(f.ball, 2.75));
+  else ball.position.set(0, .12, 0);
+  lastBall.copy(ball.position);
+  document.getElementById('stepInfo').textContent = `ステップ ${f.seg.i + 1} / ${play.steps.length}`;
+}
+
+// ===== カメラ =====
+let camMode = 'tv';
+const camPos = new THREE.Vector3(0, 10, 20), camTgt = new THREE.Vector3();
+const Y_UP = new THREE.Vector3(0, 1, 0), camUp = Y_UP.clone();
+function desiredCam() {
+  const aspect = camera.aspect, half = play.court === 'half', fx = half ? 7 : 0, b = ball.position;
+  const vt = Math.tan(THREE.MathUtils.degToRad(22.5));
+  if (camMode === 'top') {
+    const ex = half ? 7.6 : 14.8, ez = 8.4, portrait = aspect < 1;
+    const h = portrait ? Math.max(ex / vt, ez / (vt * aspect)) : Math.max(ez / vt, ex / (vt * aspect));
+    // 縦画面では攻めるゴールが上に来るように回す
+    return { pos: new THREE.Vector3(fx, h * 1.04, 0), tgt: new THREE.Vector3(fx, 0, 0), fov: 45, up: portrait ? new THREE.Vector3(1, 0, 0) : new THREE.Vector3(0, 0, -1) };
+  }
+  if (camMode === 'tv') {
+    const k = THREE.MathUtils.clamp(1.5 / aspect, 1, 2.6), cx = half ? fx * .5 + b.x * .5 : b.x * .7;
+    return { pos: new THREE.Vector3(cx, 5.8 * k, 13 * k), tgt: new THREE.Vector3(cx, .8, 0), fov: 45 };
+  }
+  if (camMode === 'ball') {
+    const goal = new THREE.Vector3(half || b.x > 0 ? 12.425 : -12.425, 3.05, 0);
+    const back = new THREE.Vector3(b.x - goal.x, 0, b.z - goal.z);
+    if (back.lengthSq() < .01) back.set(-1, 0, 0);
+    back.normalize().multiplyScalar(6.5 * THREE.MathUtils.clamp(1 / aspect, 1, 1.6));
+    return { pos: new THREE.Vector3(b.x + back.x, 3.4, b.z + back.z), tgt: b.clone().lerp(goal, .35), fov: 50 };
+  }
+  // 選手目線：顔の向き（走っている方向／止まっているときはボールの方）を見る
+  const p = players[selfId], fwd = new THREE.Vector3(Math.sin(p.face), 0, Math.cos(p.face));
+  const eye = p.g.position.clone().add(new THREE.Vector3(0, 1.62, 0)).addScaledVector(fwd, .2);
+  return { pos: eye, tgt: eye.clone().addScaledVector(fwd, 6).setY(1.3), fov: 72 };
+}
+function updateCamera(dt, snap) {
+  if (camMode === 'free') { controls.update(); return; }
+  const d = desiredCam(), a = snap ? 1 : 1 - Math.exp(-dt * (camMode === 'pov' ? 14 : 4));
+  camPos.lerp(d.pos, a); camTgt.lerp(d.tgt, a); camUp.lerp(d.up || Y_UP, a).normalize();
+  camera.fov += (d.fov - camera.fov) * a; camera.updateProjectionMatrix();
+  camera.position.copy(camPos); camera.up.copy(camUp); camera.lookAt(camTgt);
+  for (const p of Object.values(players)) {
+    const pov = camMode === 'pov';
+    p.body.visible = !(pov && p.id === selfId);
+    // 選手目線では、目の前の選手の番号札が視界をふさがないように隠す
+    p.g.children[2].visible = !(pov && p.g.position.distanceTo(players[selfId].g.position) < 3.5);
+  }
+}
+
+// ===== 操作 =====
+let clock = 0, playing = true, speed = 1, scrubbing = false;
+const SPEEDS = [.5, 1, 1.5], HOLD = 1200;
+const seek = document.getElementById('seek'), playBtn = document.getElementById('playBtn'), spdBtn = document.getElementById('spd');
+function setCam(m) {
+  camMode = m;
+  controls.enabled = m === 'free';
+  // 自由モード：さわるまではゆっくり自動で回る。最初の数秒は操作の案内を出す
+  controls.autoRotate = m === 'free'; controls.autoRotateSpeed = 1.2;
+  if (m === 'free') {
+    const h = document.getElementById('freeHint'); h.classList.remove('gone'); clearTimeout(setCam.hintTimer);
+    setCam.hintTimer = setTimeout(() => h.classList.add('gone'), 3500);
+    document.querySelector('.cam-free').classList.remove('pulse');
+    try { localStorage.setItem('pb-free-seen', '1'); } catch (e) {}
+  }
+  if (m === 'free') { camera.up.copy(Y_UP); camUp.copy(Y_UP); camera.lookAt(camTgt); controls.target.copy(camTgt); for (const p of Object.values(players)) { p.body.visible = true; p.g.children[2].visible = true; } }
+  document.querySelectorAll('#cams button').forEach(b => b.classList.toggle('on', b.dataset.cam === m));
+}
+document.querySelectorAll('#cams button').forEach(b => b.onclick = () => setCam(b.dataset.cam));
+const nums = document.getElementById('nums');
+OFF.forEach(id => {
+  const b = document.createElement('button'); b.textContent = id.slice(1); b.dataset.id = id;
+  b.onclick = () => { selfId = id; paintSelf(); pathSeg = -1; markNums(); if (camMode !== 'pov') setCam('pov'); };
+  nums.appendChild(b);
+});
+const markNums = () => nums.querySelectorAll('button').forEach(b => b.classList.toggle('on', b.dataset.id === selfId));
+playBtn.onclick = () => { if (clock >= T.total) clock = 0; playing = !playing; playBtn.textContent = playing ? '❚❚' : '▶'; };
+spdBtn.onclick = () => { speed = SPEEDS[(SPEEDS.indexOf(speed) + 1) % SPEEDS.length]; spdBtn.textContent = `×${speed}`; };
+seek.oninput = () => { scrubbing = true; clock = seek.value / 1000 * T.total; };
+seek.onchange = () => { scrubbing = false; };
+const sel = document.getElementById('playSel');
+sel.onchange = () => loadPlay(PLAYS[sel.value]);
+// チーム情報で当てた背番号（play.lineup）を、頭の上の番号と下の番号ボタンに出す
+function applyLineup(p) {
+  for (const id of OFF) {
+    players[id].n = String((p.lineup && p.lineup[id]) || id.slice(1));
+    nums.querySelector(`[data-id="${id}"]`).textContent = players[id].n;
+  }
+  paintSelf();
+}
+function loadPlay(p) {
+  play = p; T = timeline(p); clock = 0; pathSeg = -1;
+  applyLineup(p);
+  defMode = PBDefense.modeOf(p);
+  drawItems();
+  updateScene(0, 1); updateCamera(1, true);
+}
+
+function resize() {
+  const w = Math.max(1, innerWidth), h = Math.max(1, innerHeight);   // 画面が隠れていて 0 のときも計算が壊れないように
+  renderer.setSize(w, h, false);
+  camera.aspect = w / h; camera.updateProjectionMatrix();
+}
+addEventListener('resize', resize); resize();
+// 戻る：重ねて開かれていれば閉じてもらう（作戦ボードはそのままの状態で残っている）
+document.getElementById('backBtn').onclick = () => {
+  if (embedded) parent.postMessage('pb-3d-close', '*');
+  else location.href = 'index.html';
+};
+function boot(handoff) {
+  if (PLAYS.length) return;
+  const mine = handoff && usable(handoff.play) ? [handoff.play] : [];
+  // チームの色：攻めのユニフォームと足元の輪をその色にする（赤系なら守りは灰色）
+  const tc = handoff && handoff.color;
+  if (tc && tc.c) {
+    COL.o = tc.c; if (tc.def) COL.x = tc.def;
+    for (const p of Object.values(players)) p.mJersey.color.set(COL[p.side]);
+  }
+  PLAYS = [...mine, ...PB_PLAYBOOK, ...saved.filter(usable)].filter((p, i, a) => a.findIndex(q => q.id === p.id) === i);
+  PLAYS.forEach((p, i) => { const o = document.createElement('option'); o.value = i; o.textContent = p.name; sel.appendChild(o); });
+  const self = handoff && OFF.includes(handoff.selfId);
+  if (self) selfId = handoff.selfId;
+  paintSelf(); markNums(); setCam(self ? 'pov' : 'tv'); loadPlay(PLAYS[0]);
+  let prevNow = performance.now();
+  renderer.setAnimationLoop(now => tick(now - prevNow, prevNow = now));
+}
+if (embedded) {
+  addEventListener('message', e => { if (e.source === parent && e.data && e.data.type === 'pb-3d-play') boot(e.data); });
+  parent.postMessage('pb-3d-ready', '*');
+  setTimeout(() => boot(null), 1500);   // 返事が来ないときは見本だけで始める
+} else boot(null);
+window.dbg = { camera, scene, ball, renderer, players };
+
+function tick(ms) {
+  const dt = Math.min(.05, ms / 1000);
+  if (playing && !scrubbing) {
+    clock += dt * 1000 * speed;
+    if (clock > T.total + HOLD) clock = 0;
+  }
+  const t = Math.min(clock, T.total);
+  updateScene(t, dt);
+  updateCamera(dt, false);
+  if (!scrubbing) seek.value = t / T.total * 1000;
+  renderer.render(scene, camera);
+}
+</script>
+</body>
+</html>

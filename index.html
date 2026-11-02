@@ -1,0 +1,2006 @@
+<!doctype html>
+<html lang="ja">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>PLAYBOARD 3D</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=Zen+Kaku+Gothic+New:wght@500;700&display=swap">
+<style>
+/* レイアウト：上に作戦名とメニュー、真ん中にコート、下にモード切り替えと操作ボタン（スマホ横持ち・タブレットを想定） */
+:root {
+  --bg: #eef0f2; --surface: #ffffff; --fg: #15181d; --muted: #5d6570; --line: #d5d9df;
+  --accent: #d2581f; --accent-fg: #ffffff; --danger: #b3261e;
+  --body: "Zen Kaku Gothic New", "Hiragino Sans", "Yu Gothic", sans-serif;
+  --num: "Barlow Condensed", "Arial Narrow", Arial, sans-serif;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #121418; --surface: #1c1f24; --fg: #eceef1; --muted: #9aa3ad; --line: #2e333a; --accent: #f07d40; --accent-fg: #15181d; --danger: #ff7b6b; color-scheme: dark; } }
+:root[data-theme="dark"] {
+  --bg: #121418; --surface: #1c1f24; --fg: #eceef1; --muted: #9aa3ad; --line: #2e333a; --accent: #f07d40; --accent-fg: #15181d; --danger: #ff7b6b; color-scheme: dark; }
+
+[hidden] { display: none !important; }
+html, body { height: 100%; margin: 0; }
+body { background: var(--bg); color: var(--fg); font-family: var(--body); font-size: 15px; -webkit-tap-highlight-color: transparent; }
+.app { height: 100%; box-sizing: border-box; display: grid; grid-template-rows: auto minmax(0, 1fr) auto; gap: 8px;
+  padding-block: 8px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+button { font: 700 14px var(--body); color: var(--fg); background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 8px 12px; cursor: pointer; min-height: 40px; }
+button:disabled { opacity: .4; cursor: default; }
+button:focus-visible, input:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+button.primary { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); }
+button.on { background: var(--fg); color: var(--bg); border-color: var(--fg); }
+
+.top { display: flex; gap: 8px; align-items: center; min-width: 0; }
+.brand { font: 700 18px var(--num); letter-spacing: .08em; color: var(--accent); white-space: nowrap; }
+#playName { flex: 1; min-width: 0; font: 700 16px var(--body); color: var(--fg); background: transparent; border: 1px solid transparent; border-radius: 6px; padding: 6px 8px; }
+#playName:hover { border-color: var(--line); }
+/* 作戦名は書き換えられることがわかるよう、枠と鉛筆マークを付ける */
+#playName { border-color: var(--line); background: var(--surface) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2356656e' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 20h9'/%3E%3Cpath d='M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z'/%3E%3C/svg%3E") no-repeat right 8px center / 16px; padding-right: 30px; }
+/* スマホの縦持ちなど幅が狭いときは、作戦名をボタンの下の段に広く出す */
+@media (max-width: 520px) { .top { flex-wrap: wrap; } .top .homebtn { margin-right: auto; } #playName { order: 10; box-sizing: border-box; flex: 1 1 calc(100% - 60px); } #helpBtn { order: 11; } }
+#saveName { flex: 1; min-width: 0; font: 700 16px var(--body); color: var(--fg); background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 10px; }
+
+/* トップ画面と同じ色の組み合わせ（背景 白／黒 × 線 青／緑）で、アプリ全体の色も合わせる */
+body.t-light { --bg: #f3f6f8; --surface: #ffffff; --fg: #0d1a22; --muted: #56656e; --line: #d3dde3; --accent: #0a8fd6; --accent-fg: #ffffff; color-scheme: light; }
+body.t-light.t-green { --accent: #00a862; --line: #d2e2d9; }
+body.t-dark { --bg: #000000; --surface: #0b1419; --fg: #e6f6ff; --muted: #8aa3ad; --line: #1d3540; --accent: #38c8ff; --accent-fg: #001018; color-scheme: dark; }
+body.t-dark.t-green { --surface: #08140e; --line: #183d2c; --accent: #2dff9a; }
+
+/* コートの左右に「自分の番号」（左＝攻め、右＝守り）。再生モードのときだけ出る */
+.stage { position: relative; min-height: 0; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 8px; align-items: center; }
+.boardwrap { min-width: 0; height: 100%; display: grid; place-items: center; container-type: size; perspective: 1200px; }
+.stage { height: 100%; overflow: hidden; }
+/* 「自分の番号」が隠れているときもコートが真ん中の列に入るよう、列を決めておく */
+#selfOff { grid-column: 1; } .boardwrap { grid-column: 2; } #selfDef { grid-column: 3; }
+.selfcol { display: flex; flex-direction: column; gap: 6px; max-height: 100%; min-height: 0; overflow-y: auto; }
+@media (max-height: 560px) {   /* 横持ちのスマホなど、高さが足りないときは2列に並べる */
+  .selfcol { display: grid; grid-template-columns: repeat(2, auto); gap: 4px; align-content: center; }
+  .selfcol .cap { grid-column: 1 / -1; }
+  .selfcol .cap br { display: none; }
+  .selfcol button { min-width: 38px; min-height: 32px; font-size: 15px; }
+}
+.selfcol .cap { font-size: 12px; color: var(--fg); opacity: .75; text-align: center; line-height: 1.3; }
+.selfcol button { min-width: 44px; min-height: 36px; padding: 4px 6px; font-family: var(--num); font-size: 17px; }
+.selfcol button small { display: block; font: 700 10px/1.2 var(--body); max-width: 5em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.b3d { --ar: 1; position: relative; aspect-ratio: var(--ar); width: min(100cqw, 100cqh * var(--ar)); max-width: 100%;
+  transform-style: preserve-3d; transform-origin: 50% 62%; transition: transform .8s cubic-bezier(.65,0,.25,1); }
+.b3d.three { transform: rotateX(55deg) scale(.94); }
+#board { display: block; width: 100%; height: 100%; touch-action: none; user-select: none; -webkit-user-select: none; border-radius: 10px; }
+#figs { position: absolute; inset: 0; transform-style: preserve-3d; pointer-events: none; }
+.fig { position: absolute; transform-origin: 50% 100%; transform: translate(-50%, -100%) rotateX(-55deg); }
+.fig svg { display: block; width: 100%; height: auto; overflow: visible; }
+.banner { position: absolute; left: 8px; right: 8px; top: 8px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap;
+  background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; font-size: 14px; }
+.banner span { flex: 1; min-width: 12em; }
+
+.bottom { display: grid; gap: 8px; }
+.row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+.seg button { border: 0; border-radius: 0; min-width: 64px; }
+.seg button + button { border-left: 1px solid var(--line); }
+.hint { color: var(--fg); opacity: .78; font-size: 14px; line-height: 1.6; flex: 1; min-width: 12em; }
+.stepno { font: 700 18px var(--num); min-width: 5.5em; text-align: center; font-variant-numeric: tabular-nums; }
+/* 録画中の「1つ戻す」「シュート」は大きく、シュートはボールの色で目立たせる */
+button.big { min-height: 48px; padding: 8px 16px; font-size: 16px; }
+button.shoot { background: #e8742a; border-color: #e8742a; color: #fff; }
+.stepnav { display: inline-flex; align-items: center; gap: 4px; }
+.pair { display: inline-flex; gap: 8px; }
+.viewnote { font-size: 13px; color: var(--muted); }
+#viewBtn { display: inline-flex; align-items: center; gap: 5px; }
+.viewpanel { padding: 8px; border: 1px dashed var(--line); border-radius: 12px; background: var(--surface); }
+/* モードの切り替え：番号つきで「1 配置 → 2 録画 → 3 再生」の順がわかるように。選んでいるモードは色で区別（配置＝青・録画＝赤・再生＝緑） */
+:root { --m-setup: #0a8fd6; --m-rec: #e5484d; --m-play: #12a150; }
+.seg button[data-mode] { display: inline-flex; align-items: center; justify-content: center; gap: 5px; }
+.mn { display: inline-grid; place-items: center; width: 18px; height: 18px; border-radius: 50%; font: 700 12px/1 var(--num); font-style: normal; background: var(--line); color: var(--fg); }
+.recdot { width: 8px; height: 8px; border-radius: 50%; background: var(--m-rec); }
+#m-setup.on { background: var(--m-setup); border-color: var(--m-setup); color: #fff; }
+#m-rec.on { background: var(--m-rec); border-color: var(--m-rec); color: #fff; }
+#m-play.on { background: var(--m-play); border-color: var(--m-play); color: #fff; }
+.seg button.on .mn { background: #fff; color: #15181d; }
+#m-rec.on .recdot { background: #fff; animation: recblink 1.2s steps(2, start) infinite; }
+@keyframes recblink { to { visibility: hidden; } }
+/* コートの右上：今のモードを、モードと同じ色の札で表示 */
+.modechip { position: absolute; right: 0; top: 0; z-index: 2; display: inline-flex; align-items: center; gap: 6px; padding: 5px 12px; border-radius: 999px; font-size: 13px; font-weight: 700; color: #fff; box-shadow: 0 2px 8px rgba(0,0,0,.15); pointer-events: none; }
+.modechip.setup { background: var(--m-setup); } .modechip.rec { background: var(--m-rec); } .modechip.play { background: var(--m-play); }
+.modechip.rec::before { content: ""; width: 9px; height: 9px; border-radius: 50%; background: #fff; animation: recblink 1.2s steps(2, start) infinite; }
+/* 再生モードの大きなボタン：「▶ 再生」と「3Dで見る」（3D はトップ画面のバッジと同じオレンジ） */
+.playmain button { flex: 1; min-height: 54px; font-size: 18px; border-radius: 12px; display: inline-flex; align-items: center; justify-content: center; gap: 8px; }
+.btn3d { color: #fff; border: 0; background: linear-gradient(160deg, #ffb070 0%, #ff8a3d 45%, #c2410c 100%); box-shadow: 0 3px 0 #7a2c08, 0 0 18px rgba(255,138,61,.45); text-shadow: 0 1px 0 #7a2c08; }
+.btn3d:disabled { box-shadow: none; }
+/* 再生中の書き込み（コーチ用のペン）：コートの上に重ねた透明の層。ペンを選んでいるときだけ指を受け取る */
+.ink { position: absolute; left: 0; top: 0; width: 0; height: 0; z-index: 3; pointer-events: none; touch-action: none; }   /* 位置と大きさはコートに合わせて fitInk() で決める */
+.ink.active { pointer-events: auto; cursor: crosshair; }
+.pentools { display: inline-flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.sw { width: 36px; min-width: 36px; height: 36px; min-height: 36px; padding: 0; border-radius: 50%; background: var(--c); border: 2px solid var(--line); box-shadow: inset 0 0 0 2px var(--surface); }
+button.sw.on { background: var(--c); border-color: var(--fg); box-shadow: inset 0 0 0 2px var(--surface), 0 0 0 2px var(--fg); }
+/* 道具箱（コートの左横）と人数 */
+#tray { grid-column: 1; display: flex; flex-direction: column; gap: 6px; align-self: center; }
+.tritem { display: flex; flex-direction: column; align-items: center; gap: 2px; width: 60px; min-height: 0; padding: 6px 2px; border: 1px solid var(--line); border-radius: 10px;
+  background: var(--surface); color: var(--fg); font: 700 12px var(--body); touch-action: none; user-select: none; -webkit-user-select: none; cursor: grab; box-sizing: border-box; }
+.tritem svg { width: 30px; height: 30px; display: block; }
+.tri-ic { font-size: 22px; line-height: 30px; height: 30px; }
+button.tritem.on { background: var(--fg); color: var(--bg); border-color: var(--fg); }
+/* 置いたパイロン・マーカーをつかんでいる間は、道具箱が「ここへ戻すと消える」場所になる */
+#tray.drop { outline: 2px dashed #e5484d; outline-offset: 3px; border-radius: 12px; }
+#tray.drop .tritem { opacity: .5; }
+@media (max-height: 560px) { #tray { display: grid; grid-template-columns: repeat(2, auto); } .tritem { width: 46px; } .tritem svg, .tri-ic { width: 24px; height: 24px; line-height: 24px; font-size: 18px; } }
+#tray[hidden] { display: none; }
+.counter { display: inline-flex; align-items: center; gap: 4px; font-size: 14px; font-weight: 700; }
+.counter button { min-width: 36px; min-height: 36px; padding: 0; font-size: 18px; }
+.counter b { min-width: 1.2em; text-align: center; font: 700 18px var(--num); }
+/* 左上の「ホーム」：家のマークつきで、トップ画面へ戻るボタンだとわかるように */
+.homebtn { display: inline-flex; align-items: center; gap: 6px; color: var(--accent); border-color: var(--accent); white-space: nowrap; }
+/* 作戦一覧から開いたときだけ、コートの左上に「← 作戦一覧に戻る」 */
+.backchip { position: absolute; left: 0; top: 0; z-index: 2; min-height: 36px; padding: 4px 12px; font-size: 13px; border-radius: 999px;
+  background: var(--surface); color: var(--accent); border-color: var(--accent); box-shadow: 0 2px 8px rgba(0,0,0,.12); }   /* 背景と線のボタンは、いつも横に並べる */
+.stepnav .stepno { min-width: 4.5em; }
+/* 横持ちのスマホなど高さが足りないときは、説明文を隠してコートを広くする */
+@media (max-height: 520px) { .hint { display: none; } button.big { min-height: 40px; } .stepno { min-width: 4.5em; } }
+
+.overlay { position: fixed; inset: 0; background: rgba(0,0,0,.45); display: grid; place-items: center; z-index: 10;
+  padding: max(16px, env(safe-area-inset-top, 0px)) max(16px, env(safe-area-inset-right, 0px)) max(16px, env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px)); }
+.sheet { background: var(--surface); color: var(--fg); border-radius: 12px; padding: 18px; width: min(520px, 100%); max-height: 100%; overflow: auto; display: grid; gap: 12px; box-sizing: border-box; }
+.sheet h2 { margin: 0; font-size: 18px; }
+/* 見出しと右上の「×」は、下へスクロールしても上に残る */
+.sheethead { position: sticky; top: -18px; z-index: 1; display: flex; align-items: center; gap: 8px; margin: -18px -18px 0; padding: 12px 12px 8px 18px; background: var(--surface); border-bottom: 1px solid var(--line); }
+.sheethead h2 { flex: 1; }
+/* 使い方：ボタンの名前は本物のボタンと同じ見た目で示す */
+.help { line-height: 1.7; font-size: 14px; }
+.help .lead { color: var(--fg); }
+.help details { border: 1px solid var(--line); border-radius: 10px; padding: 8px 12px; }
+.help summary { cursor: pointer; font-weight: 700; font-size: 15px; color: var(--accent); }
+.help h4 { margin: 10px 0 0; font-size: 14px; }
+.help ol, .help ul { margin: 6px 0; padding-left: 1.3em; }
+.help li { margin: 4px 0; }
+.help .note { font-size: 14px; }
+.kb { display: inline-block; margin: 0 2px; padding: 0 7px; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); color: var(--fg); font-weight: 700; font-size: 13px; line-height: 1.7; white-space: nowrap; }
+.kb.pri { background: var(--accent); border-color: var(--accent); color: var(--accent-fg); }
+.kb.shoot { background: #e8742a; border-color: #e8742a; color: #fff; }
+.kb.backkb { border-radius: 999px; color: var(--accent); border-color: var(--accent); background: var(--surface); }
+/* 使い方の図 */
+.help figure { margin: 8px 0; }
+.help figcaption { font-size: 13px; text-align: center; color: var(--muted); line-height: 1.5; margin-top: 2px; }
+.hfig { display: block; }
+.hfig svg { display: block; width: 100%; max-width: 320px; margin: 0 auto; border-radius: 8px; border: 1px solid var(--line); }
+.figs3 { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 8px; }
+.figs3 figure { margin: 0; }
+/* 画面の見取り図：本物の画面を小さくまとめ、番号を付ける */
+.mock { display: grid; gap: 6px; padding: 8px; margin: 8px 0; border: 1px solid var(--line); border-radius: 12px; background: var(--bg); font-size: 11px; }
+.mock > div { position: relative; display: flex; flex-wrap: wrap; gap: 4px; align-items: center; padding-right: 26px; }
+.mock .kb { font-size: 11px; padding: 0 5px; }
+.mock .kb.on { background: var(--fg); border-color: var(--fg); color: var(--bg); }
+.m-brand { margin-right: auto; }
+.m-input { flex: 1; border: 1px solid var(--line); border-radius: 6px; padding: 0 6px; background: var(--surface); }
+.m-court .hfig { flex: 1; } .m-court .hfig svg { max-width: 200px; }
+.mock i { position: absolute; right: 0; top: 50%; transform: translateY(-50%); width: 20px; height: 20px; border-radius: 50%; background: #e8742a; color: #fff; font: 700 12px/20px var(--num); font-style: normal; text-align: center; }
+.legend { padding-left: 1.5em; }
+.legend li::marker { color: #e8742a; font-weight: 700; }
+.iconbtn { width: 40px; padding: 0; font-size: 18px; border-radius: 999px; }
+.xclose { width: 44px; height: 44px; min-height: 44px; padding: 0; font-size: 26px; line-height: 1; border-radius: 999px; }
+.sheet p { margin: 0; color: var(--muted); font-size: 14px; }
+.plist { display: grid; gap: 6px; }
+.backup { border: 1px solid var(--line); border-radius: 10px; padding: 8px 12px; }
+.backup summary { cursor: pointer; font-weight: 700; color: var(--accent); }
+.backup p { margin: 8px 0; font-size: 14px; color: var(--fg); opacity: .8; }
+.backup textarea { width: 100%; box-sizing: border-box; margin-top: 6px; font: 12px/1.4 ui-monospace, monospace; color: var(--fg); background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 8px; resize: vertical; }
+.tplhead { margin: 10px 0 0; font-size: 15px; scroll-margin-top: 70px; }
+.pitem.tpl > div { flex: 1; min-width: 0; }
+.pitem.tpl p { margin: 2px 0 0; font-size: 13px; line-height: 1.6; }
+/* チーム情報・選手を当てる */
+.tf { display: grid; gap: 6px; font-size: 14px; font-weight: 700; }
+.tf input, .tf select { font: 16px var(--body); color: var(--fg); background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; min-width: 0; }
+.tcolors { display: flex; flex-wrap: wrap; gap: 8px; }
+.tcolors button { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px 4px 4px; font-size: 13px; }
+.tcolors button i { width: 26px; height: 26px; border-radius: 50%; background: var(--c); border: 2px solid rgba(0,0,0,.15); }
+.tcolors button.on { outline: 3px solid var(--accent); outline-offset: 1px; }
+.roster, .lineup { display: grid; gap: 6px; }
+.rrow { display: flex; gap: 6px; align-items: center; }
+.rrow input.no { width: 4.2em; flex: none; text-align: center; font-family: var(--num); font-size: 18px; }
+.rrow input.nm { flex: 1; }
+.rrow button { min-width: 40px; padding: 0; }
+.lrow { display: flex; gap: 8px; align-items: center; }
+.lrow b { min-width: 4.5em; }
+.lrow select { flex: 1; min-width: 0; font: 16px var(--body); color: var(--fg); background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 8px; }
+.h-team { font-size: 14px; color: var(--neon2); letter-spacing: .06em; font-weight: 700; }
+.chip { display: inline-block; font-size: 11px; font-weight: 700; padding: 1px 8px; border-radius: 999px; vertical-align: 1px; color: #fff; }
+.c-off { background: #0a8fd6; } .c-def { background: #e5484d; } .c-fun { background: #e8742a; }
+.pitem { display: flex; gap: 8px; align-items: center; border: 1px solid var(--line); border-radius: 8px; padding: 6px 6px 6px 12px; }
+.pitem.cur { border-color: var(--accent); }
+.pitem b { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.pitem small { color: var(--muted); font-family: var(--num); font-size: 14px; }
+.field { display: flex; gap: 8px; }
+.field input { flex: 1; min-width: 0; font: 14px var(--num); color: var(--fg); background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 8px; }
+/* はじめてのガイド：吹き出しと、押す場所を指す指のマーク（画面の操作はさえぎらない） */
+.guide { position: fixed; inset: 0; z-index: 25; pointer-events: none; }
+.g-bubble { position: fixed; width: min(300px, calc(100% - 32px)); box-sizing: border-box; padding: 12px 14px; border-radius: 14px; background: #e8742a; color: #fff;
+  box-shadow: 0 8px 24px rgba(0,0,0,.3); pointer-events: auto; font-size: 15px; line-height: 1.6; }
+.g-bubble p { margin: 0 0 8px; font-weight: 700; }
+.g-foot { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+.g-foot span { flex: 1; opacity: .85; }
+.g-foot button { min-height: 32px; padding: 2px 10px; font-size: 13px; background: rgba(255,255,255,.2); color: #fff; border-color: rgba(255,255,255,.5); }
+.g-finger { position: fixed; width: 40px; height: 40px; margin: -4px 0 0 -14px; filter: drop-shadow(0 2px 4px rgba(0,0,0,.4)); animation: gTap 1.1s ease-in-out infinite; }
+.g-finger.swipe { animation: gSwipe 1.8s ease-in-out infinite; }
+@keyframes gTap { 50% { transform: translateY(8px) scale(.92); } }
+@keyframes gSwipe { 0% { transform: translate(0, 0); opacity: 0; } 15% { opacity: 1; } 70% { transform: translate(70px, -20px); opacity: 1; } 100% { transform: translate(70px, -20px); opacity: 0; } }
+/* お知らせは画面の上のほう（コートの上端あたり）に出す。下のボタンに重ならないように */
+.toast { position: fixed; left: 50%; top: calc(112px + env(safe-area-inset-top, 0px)); transform: translateX(-50%); background: var(--fg); color: var(--bg);
+  padding: 8px 14px; border-radius: 14px; font-size: 14px; line-height: 1.5; z-index: 20; pointer-events: none; transition: opacity .2s; max-width: calc(100% - 32px); width: max-content; text-align: center;
+  box-shadow: 0 4px 16px rgba(0,0,0,.25); }
+.toast[hidden] { display: block !important; opacity: 0; }
+.brand { background: none; border: 0; padding: 0 4px; min-height: 0; }
+
+/* ===== トップ画面：縦向きのコートが光る線で描かれ → 奥へ倒れて床になり → 上にボタンが並ぶ（いつも黒い画面） ===== */
+.home { position: fixed; inset: 0; z-index: 8; overflow: hidden; color: #e6f6ff; color-scheme: dark; --neon: #38c8ff; --neon2: #c9f1ff; --ball: #ff8a3d;
+  background: radial-gradient(ellipse at 50% 75%, #04131b 0%, #010507 55%, #000 100%); }
+.home.green { --neon: #2dff9a; --neon2: #c8ffe3; background: radial-gradient(ellipse at 50% 75%, #031a10 0%, #010603 55%, #000 100%); }
+.home-stage { position: absolute; inset: 0; display: grid; place-items: center; perspective: 900px; container-type: size;
+  padding: max(16px, env(safe-area-inset-top, 0px)) max(16px, env(safe-area-inset-right, 0px)) max(16px, env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px)); box-sizing: border-box; }
+.tilt { height: min(100cqh, 100cqw * 1.7647); aspect-ratio: 17 / 30; transform-origin: 50% 100%; }
+.tilt svg { width: 100%; height: 100%; display: block; overflow: visible; }
+.home-ui { position: absolute; left: 0; right: 0; top: max(7vh, calc(env(safe-area-inset-top, 0px) + 20px)); display: grid; gap: 18px; justify-items: center;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); pointer-events: none; }
+.home-ui > * { pointer-events: auto; }
+.h-title { display: grid; justify-items: center; gap: 4px; }
+.h-brand { font: 700 clamp(36px, 8vw, 60px)/1 var(--num); letter-spacing: .18em; color: var(--neon2); text-shadow: 0 0 12px var(--neon), 0 0 32px var(--neon); }
+.h-tag { font-size: 15px; color: #9fb4bf; letter-spacing: .08em; }
+/* 「BASKETBALL TACTICS」：ボールの絵と左右の線つきの小見出し */
+.h-kicker { display: inline-flex; align-items: center; gap: 8px; font: 700 13px var(--num); letter-spacing: .42em; color: var(--ball); text-shadow: 0 0 10px color-mix(in srgb, var(--ball) 60%, transparent); }
+.h-kicker svg { width: 18px; height: 18px; filter: drop-shadow(0 0 6px color-mix(in srgb, var(--ball) 70%, transparent)); }
+.h-kicker::before, .h-kicker::after { content: ""; width: 28px; height: 1px; background: linear-gradient(90deg, transparent, var(--ball)); }
+.h-kicker::after { background: linear-gradient(90deg, var(--ball), transparent); margin-left: -.42em; }
+/* 「3D」：ボールのオレンジで、少し斜めに立体的に */
+.h-3d { display: inline-block; margin-left: .18em; padding: 0 .16em; font: 700 .78em/1.05 var(--num); letter-spacing: .04em; color: #fff3e8; transform: skewX(-10deg) translateY(-.06em);
+  background: linear-gradient(160deg, #ffb070 0%, var(--ball) 45%, #c2410c 100%); border-radius: .12em;
+  text-shadow: 0 .04em 0 #7a2c08, 0 0 10px rgba(255,255,255,.35); box-shadow: 0 .08em 0 #7a2c08, 0 0 22px color-mix(in srgb, var(--ball) 70%, transparent); }
+.home.light .h-kicker { color: #d2581f; text-shadow: none; }
+/* 作戦シーン：走った跡・ボールの尾・リングの光 */
+.s-trail { stroke: var(--neon2); }
+.s-trailglow { stroke: var(--neon); opacity: .45; }
+.s-tail { stroke: var(--ball); }
+.s-ring { stroke: var(--neon2); fill: none; }
+.s-spark { stroke: var(--neon2); }
+.h-btns { display: grid; grid-template-columns: repeat(2, minmax(0, 220px)); gap: 10px; justify-content: center; width: min(460px, 100%); }
+.h-btns button { min-height: 50px; font-size: 15px; background: rgba(0,0,0,.55); color: #e6f6ff; border: 1px solid color-mix(in srgb, var(--neon) 55%, transparent); border-radius: 10px; }
+.h-btns .h-wide { grid-column: 1 / -1; }
+.h-btns button:hover { box-shadow: 0 0 14px color-mix(in srgb, var(--neon) 50%, transparent); }
+.h-btns button.primary { background: var(--neon); color: #001018; border-color: var(--neon); box-shadow: 0 0 18px color-mix(in srgb, var(--neon) 60%, transparent); }
+.h-skip, .h-color, .h-bg { position: absolute; background: rgba(0,0,0,.4); color: #8aa3ad; border: 1px solid rgba(255,255,255,.18); min-height: 34px; padding: 4px 12px; font-size: 13px; }
+.h-skip { right: max(16px, env(safe-area-inset-right, 0px)); top: max(16px, env(safe-area-inset-top, 0px)); }
+.h-color { right: max(16px, env(safe-area-inset-right, 0px)); bottom: max(16px, env(safe-area-inset-bottom, 0px)); }
+.h-bg { left: max(16px, env(safe-area-inset-left, 0px)); bottom: max(16px, env(safe-area-inset-bottom, 0px)); }
+
+/* 白い背景：線は濃いめの青／緑にして、光はやわらかい影のように見せる */
+.home.light { color: #0d1a22; color-scheme: light; --neon: #0a8fd6; --neon2: #063d5c;
+  background: radial-gradient(ellipse at 50% 75%, #ffffff 0%, #f3f6f8 60%, #e6ecf0 100%); }
+.home.light.green { --neon: #00a862; --neon2: #04462a; background: radial-gradient(ellipse at 50% 75%, #ffffff 0%, #f2f8f4 60%, #e4eee8 100%); }
+.home.light .h-brand { text-shadow: 0 2px 16px color-mix(in srgb, var(--neon) 35%, transparent); }
+.home.light .h-tag { color: #56656e; }
+.home.light .h-btns button { background: rgba(255,255,255,.85); color: #0d1a22; }
+.home.light .h-btns button.primary { background: var(--neon); color: #ffffff; }
+.home.light .h-skip, .home.light .h-color, .home.light .h-bg { background: rgba(255,255,255,.8); color: #56656e; border-color: rgba(0,0,0,.15); }
+.home.light .n-glow { opacity: .18; }
+.home.light .n-pl { fill: #ffffff; }
+.home.light .n-floor { fill-opacity: .06; }
+.home.light.run .n-glow.hd { animation-name: hdrawGL; }
+.home.light.run .h-drop { animation-name: hdrop, hflashL; }
+@keyframes hdrawGL { 0% { stroke-dashoffset: 1.05; opacity: 0 } 3% { opacity: .18 } 100% { stroke-dashoffset: 0; opacity: .18 } }
+@keyframes hflashL { from { stroke: #001a2a } }
+
+.n-core { stroke: var(--neon); }
+.n-glow { stroke: var(--neon); opacity: .28; }
+.n-floor { fill: var(--neon); fill-opacity: .045; }
+.n-paint { fill: var(--neon); fill-opacity: .1; }
+.n-grid { stroke: var(--neon); stroke-opacity: .13; stroke-width: .025; fill: none; }
+.n-pl { fill: #000c12; stroke: var(--neon); }
+.n-txt { fill: var(--neon2); }
+
+.hd { stroke-dasharray: 1.03 1.1; stroke-dashoffset: 1.05; opacity: 0; }
+.n-glow.hd { opacity: 0; }
+.h-pop, .h-pl { transform-box: fill-box; transform-origin: center; }
+.home.run .hd { animation: hdraw var(--du, .8s) cubic-bezier(.65,0,.35,1) var(--dl) both; }
+.home.run .n-glow.hd { animation-name: hdrawG; }
+.home.run .h-drop { animation: hdrop .42s cubic-bezier(.55,0,1,.45) both, hflash .6s .42s ease-out both; }
+.home.run .home-stage { animation: hshake .35s .42s both; }
+.home.run .h-pop { animation: hpop .45s cubic-bezier(.3,1.6,.5,1) var(--dl) both; }
+.home.run .tilt { animation: htilt 1.3s 3.2s cubic-bezier(.65,0,.25,1) both; }
+.home.run .h-floor { animation: hfade .9s 3.3s both; }
+.home.run .h-pl { animation: hpop .45s cubic-bezier(.3,1.6,.5,1) var(--dl) both; }
+.home.run .h-up { animation: hup .55s cubic-bezier(.2,.8,.2,1) var(--dl) both; }
+.home.run .h-skip { animation: hgone .3s 7.4s both; }
+.home.run .h-brand { animation: hup .55s cubic-bezier(.2,.8,.2,1) var(--dl) both, hglow 1.2s var(--dl) ease-out both; }
+@keyframes hglow { 0% { text-shadow: 0 0 40px #fff, 0 0 80px var(--neon), 0 0 120px var(--neon) } 100% { text-shadow: 0 0 12px var(--neon), 0 0 32px var(--neon) } }
+@keyframes hdraw { 0% { stroke-dashoffset: 1.05; opacity: 0 } 3% { opacity: 1 } 100% { stroke-dashoffset: 0; opacity: 1 } }
+@keyframes hdrawG { 0% { stroke-dashoffset: 1.05; opacity: 0 } 3% { opacity: .28 } 100% { stroke-dashoffset: 0; opacity: .28 } }
+@keyframes hdrop { from { transform: translateX(-32px) } to { transform: none } }
+@keyframes hflash { from { stroke: #fff } }
+@keyframes hshake { 0% { transform: translate(-6px, 5px) } 25% { transform: translate(6px, -4px) } 50% { transform: translate(-3px, -2px) } 75% { transform: translate(2px, 2px) } 100% { transform: none } }
+@keyframes hpop { from { transform: scale(0) } to { transform: scale(1) } }
+@keyframes htilt { from { transform: none } to { transform: rotateX(62deg) } }
+@keyframes hfade { from { opacity: 0 } to { opacity: 1 } }
+@keyframes hup { from { opacity: 0; transform: translateY(-16px) } to { opacity: 1; transform: none } }
+@keyframes hgone { to { opacity: 0; visibility: hidden } }
+.home.skip *, .home.skip { animation-delay: 0s !important; animation-duration: 1ms !important; }
+/* できあがった状態（アニメーションなし）：線は描き終わり、コートは奥へ倒れ、ボタンが並んでいる */
+.home.done .hd { stroke-dashoffset: 0; opacity: 1; }
+.home.done .n-glow.hd { opacity: .28; }
+.home.light.done .n-glow.hd { opacity: .18; }
+.home.done .tilt { transform: rotateX(62deg); }
+.home.done .h-skip { display: none; }
+@media (prefers-reduced-motion: reduce) { .home.run *, .home.run { animation-delay: 0s !important; animation-duration: 1ms !important; } }
+</style>
+
+<div class="app">
+  <div class="top">
+    <button class="homebtn" id="homeBtn" aria-label="ホーム（トップ画面）に戻る"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 11 12 4l9 7"/><path d="M5.5 9.5V20h13V9.5"/><path d="M10 20v-5.5h4V20"/></svg>ホーム</button>
+    <input id="playName" aria-label="作戦の名前（タップで変更）" maxlength="40" placeholder="作戦の名前">
+    <button id="listBtn">作戦一覧</button>
+    <button id="saveBtn" class="primary">保存</button>
+    <button id="shareBtn">共有</button>
+    <button id="helpBtn" class="iconbtn" aria-label="使い方">？</button>
+  </div>
+
+  <div class="stage">
+    <div class="selfcol" id="selfOff" aria-label="自分の番号（攻め）" hidden></div>
+    <!-- 配置モードの道具箱：パイロン・マーカーはコートへドラッグして置く。ペン・消すは選んでからコートで使う -->
+    <div class="tray" id="tray" aria-label="道具" hidden>
+      <div class="tritem" data-drag="cone" role="button" aria-label="パイロン（コートへドラッグ）"><svg viewBox="-.55 -.6 1.1 1.1" aria-hidden="true"></svg><span>パイロン</span></div>
+      <div class="tritem" data-drag="marker" role="button" aria-label="マーカー（コートへドラッグ）"><svg viewBox="-.5 -.5 1 1" aria-hidden="true"></svg><span>マーカー</span></div>
+      <button class="tritem" data-tool="pen"><b class="tri-ic" style="color:#ff3b6b">✎</b><span>書き込み</span></button>
+      <button class="tritem" data-tool="erase"><b class="tri-ic">🗑</b><span>消す</span></button>
+    </div>
+    <div class="boardwrap">
+      <div class="b3d" id="b3d">
+        <svg id="board" xmlns="http://www.w3.org/2000/svg" aria-label="コート">
+          <defs id="defs"></defs>
+          <g id="world"><g id="court"></g><g id="dyn"></g></g>
+        </svg>
+        <div id="figs"></div>
+      </div>
+    </div>
+    <div class="selfcol" id="selfDef" aria-label="自分の番号（守り）" hidden></div>
+    <svg id="figDefs" width="0" height="0" style="position:absolute" aria-hidden="true"></svg>
+    <svg id="ink" class="ink" viewBox="0 0 1 1" preserveAspectRatio="none" aria-hidden="true"></svg>
+    <button id="backList" class="backchip" hidden>← 作戦一覧に戻る</button>
+    <div class="modechip" id="modeChip" aria-live="polite"></div>
+    <div class="banner" id="sharedBanner" hidden>
+      <span>共有された作戦を見ています。「自分の番号」を選ぶと、自分の動きだけ光ります。</span>
+      <button id="keepBtn" class="primary">作戦一覧に保存</button>
+    </div>
+  </div>
+
+  <div class="bottom">
+    <!-- 再生モードでは、コートのすぐ下に「再生」と、いちばんの売りの「3Dで見る」を大きく置く -->
+    <div class="row playmain" id="p-playmain" hidden>
+      <button id="playBtn" class="primary">▶ 再生</button>
+      <button id="view3dBtn" class="btn3d"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><path d="M12 2.5 21 7.5v9L12 21.5 3 16.5v-9Z"/><path d="M3 7.5 12 12.5 21 7.5M12 12.5v9"/></svg>3Dで見る</button>
+    </div>
+    <!-- 上から：モードと「表示」 →（表示の設定）→ 今のモードのボタン → 説明 -->
+    <div class="row">
+      <div class="seg" role="tablist" aria-label="モード">
+        <button id="m-setup" data-mode="setup"><i class="mn">1</i>配置</button>
+        <button id="m-rec" data-mode="rec"><i class="mn">2</i><span class="recdot"></span>録画</button>
+        <button id="m-play" data-mode="play"><i class="mn">3</i>再生</button>
+      </div>
+      <button id="viewBtn" aria-expanded="false"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg>表示</button>
+    </div>
+    <!-- 表示の設定：コートの見え方はここにまとめる（「表示」で開く・閉じる） -->
+    <div class="row viewpanel" id="viewPanel" hidden>
+      <div class="seg" id="viewSeg" aria-label="見え方">
+        <button id="v2d">平面</button>
+        <button id="v3d">立体</button>
+      </div>
+      <span class="viewnote" id="viewNote" hidden>※ 立体は「再生」のときだけ</span>
+      <div class="seg" aria-label="コートの広さ">
+        <button id="c-half">ハーフ</button>
+        <button id="c-full">オール</button>
+      </div>
+      <button id="orientBtn">縦向きにする</button>
+      <button id="bgBtn">背景：白</button>
+    </div>
+    <div class="row" id="p-setup">
+      <button id="lineupBtn">選手を当てる</button>
+      <button id="defBtn">DFを表示</button>
+      <button class="dfmode">守り方</button>
+      <button id="resetBtn" class="clearall">動きを全部消す</button>
+    </div>
+    <div class="row tools" id="p-tools">
+      <span class="counter">攻め<button data-cnt="o-" aria-label="攻めを減らす">−</button><b id="cntO">5</b><button data-cnt="o+" aria-label="攻めを増やす">＋</button></span>
+      <span class="counter">守り<button data-cnt="x-" aria-label="守りを減らす">−</button><b id="cntX">5</b><button data-cnt="x+" aria-label="守りを増やす">＋</button></span>
+    </div>
+    <div class="row" id="p-rec" hidden>
+      <button id="recEnd" class="big primary">■ 録画終了</button>
+      <button id="undoBtn" class="big">↶ 1つ戻す</button>
+      <button id="shotBtn" class="big shoot">シュート</button>
+      <span class="stepnav">
+        <button id="prevStep" aria-label="前のステップ">◀ 前へ</button>
+        <span class="stepno" id="stepNo"></span>
+        <button id="nextStep" aria-label="次のステップ">次へ ▶</button>
+      </span>
+      <button id="addStep">＋ステップ</button>
+      <button id="redoAll" class="clearall">動きを全部消す</button>
+    </div>
+    <div class="row" id="p-play" hidden>
+      <button id="loopBtn" aria-pressed="false">↻ くり返し</button>
+      <button id="stepPlayBtn">1ステップ</button>
+      <button id="speedBtn">速さ ×1</button>
+      <button class="dfmode">守り方</button>
+      <button id="penBtn">✎ 説明ペン</button>
+      <span class="pentools" id="penTools" hidden>
+        <button data-ink="#ff3b6b" class="sw" style="--c:#ff3b6b" aria-label="ピンク"></button><button data-ink="#ffd21f" class="sw" style="--c:#ffd21f" aria-label="黄色"></button><button data-ink="#1f8fff" class="sw" style="--c:#1f8fff" aria-label="青"></button><button data-ink="#ffffff" class="sw" style="--c:#ffffff" aria-label="白"></button>
+        <button data-ink="erase">消しゴム</button><button id="inkClear">全部消す</button>
+      </span>
+    </div>
+    <div class="row"><span class="hint" id="hint"></span></div>
+
+  </div>
+</div>
+
+<div class="home" id="home" hidden>
+  <div class="home-stage" id="homeStage"><div class="tilt"><svg id="homeSvg" viewBox="-1 -1 17 30" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"></svg></div></div>
+  <div class="home-ui">
+    <div class="h-title">
+      <span class="h-kicker h-up" style="--dl:7.35s"><svg viewBox="-12 -12 24 24" aria-hidden="true"><circle r="10.5" fill="var(--ball)"/><path d="M-10.5 0 H10.5 M0 -10.5 V10.5 M-7.4 -7.4 C-3 -3.5 -3 3.5 -7.4 7.4 M7.4 -7.4 C3 -3.5 3 3.5 7.4 7.4" fill="none" stroke="#5a2508" stroke-width="1.3"/></svg>BASKETBALL TACTICS</span>
+      <span class="h-brand" style="--dl:7.45s">PLAYBOARD<b class="h-3d">3D</b></span>
+      <span class="h-tag h-up" style="--dl:7.65s">なぞるだけで、作戦が動く。</span>
+      <span class="h-team h-up" id="hTeam" style="--dl:7.7s" hidden></span>
+    </div>
+    <div class="h-btns">
+      <button id="h-new" class="primary h-up" style="--dl:7.8s">新しい作戦をつくる</button>
+      <button id="h-list" class="h-up" style="--dl:7.86s">作戦一覧</button>
+      <button id="h-sample" class="h-up" style="--dl:7.92s">見本を再生</button>
+      <button id="h-code" class="h-up" style="--dl:7.98s">コードから開く</button>
+      <button id="h-team" class="h-up" style="--dl:8.04s">チーム情報</button>
+      <button id="h-help" class="h-up" style="--dl:8.1s">使い方</button>
+    </div>
+  </div>
+  <button class="h-skip" id="h-skip">スキップ</button>
+  <button class="h-bg h-up" id="h-bg" style="--dl:8.2s">背景：白</button>
+</div>
+
+<div class="overlay" id="listDlg" hidden>
+  <div class="sheet">
+    <div class="sheethead"><h2>作戦一覧</h2><button class="xclose" data-close aria-label="閉じる">×</button></div>
+    <div class="plist" id="plist"></div>
+    <details class="backup">
+      <summary>バックアップ（すべての作戦とチーム情報）</summary>
+      <p>機種変更やブラウザのデータ削除に備えて、すべてを1つのコードにできます。LINE などで自分に送っておくと安心です。</p>
+      <div class="row"><button id="bkOut" class="primary">コードを作る</button><button id="bkCopy" disabled>コピー</button></div>
+      <textarea id="bkCode" rows="3" readonly placeholder="ここにバックアップのコードが出ます" aria-label="バックアップのコード"></textarea>
+      <p>戻すとき：コードを貼って「読み込む」。今ある作戦は消えずに、足されます。</p>
+      <textarea id="bkIn" rows="3" placeholder="バックアップのコードを貼る" aria-label="読み込むコード"></textarea>
+      <div class="row"><button id="bkLoad">読み込む</button></div>
+    </details>
+    <div class="row"><button id="newBtn" class="primary">＋ 新しい作戦</button><span class="spacer" style="flex:1"></span><button data-close>閉じる</button></div>
+  </div>
+</div>
+<div class="overlay" id="helpDlg" hidden>
+  <div class="sheet help">
+    <div class="sheethead"><h2>使い方</h2><button class="xclose" data-close aria-label="閉じる">×</button></div>
+    <p class="lead">作戦は <b>① 配置 → ② 録画 → ③ 再生</b> の順で作ります。画面の下の <span class="kb">配置</span><span class="kb">録画</span><span class="kb">再生</span> で切り替えます。</p>
+
+    <details open><summary>画面の見かた</summary>
+      <div class="mock" aria-hidden="true">
+        <div class="m-top"><span class="kb backkb m-brand">⌂ ホーム</span><span class="kb">作戦一覧</span><span class="kb pri">保存</span><span class="kb">共有</span><i>1</i></div>
+        <div class="m-name"><span class="m-input">作戦の名前 ✎</span><span class="kb">？</span><i>2</i></div>
+        <div class="m-court"><span class="hfig" data-fig="screen"></span><i>3</i></div>
+        <div class="m-row"><span class="kb pri">■ 録画終了</span><span class="kb">↶ 1つ戻す</span><span class="kb shoot">シュート</span><span class="kb">◀ 前へ</span><span class="kb">次へ ▶</span><i>4</i></div>
+        <div class="m-row"><span class="kb on">1 配置</span><span class="kb">2 録画</span><span class="kb">3 再生</span><span class="kb">表示</span><i>5</i></div>
+      </div>
+      <ol class="legend">
+        <li><span class="kb backkb">⌂ ホーム</span>：トップ画面に戻る。<b>作戦一覧・保存・共有</b>：作戦を開く、名前を付けて保存する、LINEなどで送る</li>
+        <li><b>作戦の名前</b>（タップで変えられる）と <span class="kb">？</span>（この使い方）</li>
+        <li><b>コート</b>：ここで選手を動かします</li>
+        <li><b>今のモードのボタン</b>：配置・録画・再生で中身が変わります</li>
+        <li><b>モードの切り替え</b>（1 配置・2 録画・3 再生）。<span class="kb">表示</span> を押すと、平面・立体、ハーフ・オール、向き、背景を変えられます</li>
+      </ol>
+    </details>
+
+    <details><summary>① 配置：選手を並べる</summary>
+      <figure><span class="hfig" data-fig="setup"></span><figcaption>選手を指でドラッグして、好きな場所へ</figcaption></figure>
+      <ol>
+        <li>選手の丸を<b>指でドラッグ</b>して並べます。</li>
+        <li>選手を<b>タップ</b>すると、その選手にボールを渡します。</li>
+        <li><span class="kb">DFを表示</span> で守りを出す・隠す、<span class="kb">守り方</span> で守り方を選びます（下の「守り方」を見てください）。</li>
+        <li><span class="kb">選手を当てる</span>：チーム情報に登録した選手を、作戦の1〜5の位置に当てはめます。コートの丸が本当の背番号になり、下に呼び名が出ます。</li>
+        <li><b>人数</b>：<span class="kb">攻め − ＋</span><span class="kb">守り − ＋</span> で、コートに出す人数を決めます（攻め1〜5人、守り0〜5人）。</li>
+      </ol>
+      <h4>道具箱：パイロン・マーカー・書き込み</h4>
+      <figure><span class="hfig" data-fig="tools"></span><figcaption>パイロン（オレンジ）・マーカー（黄色）・ペンの線（ピンク）</figcaption></figure>
+      <ul>
+        <li>コートの左横の<b>道具箱</b>から、パイロン・マーカーの絵を指でつかんで<b>コートまでドラッグ</b>すると置けます。</li>
+        <li>置いたパイロン・マーカーはドラッグで動かせます。<b>コートの外（道具箱）まで持っていくと消えます</b>。</li>
+        <li><span class="kb">✎ 書き込み</span>：指でなぞって線を書けます（作戦と一緒に<b>保存</b>されます。再生画面の「説明ペン」は保存されません）。<span class="kb">🗑 消す</span>：押してから線やパイロンをタップすると消えます。どちらも、もう一度押すと終わります。</li>
+      </ul>
+      <p class="note">動きを録画した後は、配置を変えられません。<span class="kb">動きを全部消す</span> で録画前に戻せます。</p>
+    </details>
+
+    <details><summary>② 録画：指でなぞって動きを記録</summary>
+      <div class="figs3">
+        <figure><span class="hfig" data-fig="run"></span><figcaption><b>走る</b>：選手をなぞる</figcaption></figure>
+        <figure><span class="hfig" data-fig="dribble"></span><figcaption><b>ドリブル</b>：ボールを持った選手をなぞる</figcaption></figure>
+        <figure><span class="hfig" data-fig="pass"></span><figcaption><b>パス</b>：ボールを味方までなぞる（受ける選手をダブルタップでもOK）</figcaption></figure>
+        <figure><span class="hfig" data-fig="shot"></span><figcaption><b>シュート</b>：<span class="kb shoot">シュート</span> を押す</figcaption></figure>
+      </div>
+      <ul>
+        <li>録画が終わったら <span class="kb pri">■ 録画終了</span>。再生モードに移って、録画した動きを1回再生します。</li>
+        <li>なぞった<b>速さ</b>が、そのまま再生の速さになります。</li>
+        <li>パスやシュートをすると、自動で<b>次のステップ</b>へ進みます。</li>
+      </ul>
+      <h4>同時に動かす・順番に動かす</h4>
+      <ul>
+        <li><b>同時に</b>：同じステップのまま、1人ずつ順番になぞります。再生するといっせいに動きます。</li>
+        <li><b>順番に</b>：1人目をなぞったら <span class="kb">＋ステップ</span> を押して、次の人をなぞります。</li>
+        <li>走る人を先になぞって、最後にパス。走り終わったところへパスが出ます。</li>
+      </ul>
+      <h4>まちがえたとき・直したいとき</h4>
+      <ul>
+        <li><span class="kb">↶ 1つ戻す</span>：そのステップで最後に記録した動きを1つ消します。</li>
+        <li><span class="kb">◀ 前へ</span><span class="kb">次へ ▶</span>：ステップを行き来します。前のステップの線は薄く表示されます。</li>
+        <li><b>選手を長押し</b>：そのステップのその選手の動きだけを消します。ほかの選手の動きは残るので、1人だけなぞり直せます。</li>
+        <li><span class="kb">動きを全部消す</span>：録画した動きを全部消して、ステップ1から録り直します（選手の配置やパイロンは残ります）。</li>
+        <li><b>手ブレ補正</b>：なぞり終わりのプルプルや、途中の小さな揺れは自動でならされます。</li>
+      </ul>
+    </details>
+
+    <details><summary>③ 再生：動きを見る</summary>
+      <figure><span class="hfig" data-fig="self"></span><figcaption>「自分の番号」を選ぶと、その選手の動きが黄色で光る</figcaption></figure>
+      <ul>
+        <li><span class="kb pri">▶ 再生</span>：最初から最後まで通して動きます。もう一度押すと止まります。</li>
+        <li><span class="kb">↻ くり返し</span>：ONにすると、止めるまで最初から何度も再生します（最後で少し止まってから戻ります）。<span class="kb">1ステップ</span> と組み合わせると、そのステップだけをくり返します。</li>
+        <li><span class="kb">1ステップ</span>：押すたびに、ステップを1つずつ見られます。</li>
+        <li><span class="kb">速さ ×1</span>：×0.5（ゆっくり）→ ×1 → ×1.5 に変わります。</li>
+        <li><b>自分の番号</b>：コートの左右に出る番号を選びます。</li>
+        <li><span class="kb">✎ 説明ペン</span>：再生しながら・止めて、コートの上に指で書き込めます（選手に説明するとき用）。色は ピンク・黄色・青・白。<span class="kb">消しゴム</span> でなぞった線を消し、<span class="kb">全部消す</span> でまとめて消せます。もう一度 <span class="kb">✎ 説明ペン</span> を押すと、書いた線は残したまま選手の番号などを押せるようになります。書き込みは保存されず、ほかの作戦を開いたりモードを変えたりすると消えます。</li>
+        <li><span class="kb">3Dで見る</span>：立体のコートで再生します。カメラは 真上・中継・ボール・<b>選手目線</b>・自由 から選べます。左上の「← 戻る」で作戦ボードへ。</li>
+      </ul>
+    </details>
+
+    <details><summary>守り方（ディフェンス）</summary>
+      <div class="figs3">
+        <figure><span class="hfig" data-fig="man"></span><figcaption><b>マンツーマン</b>：1人ずつ相手につく</figcaption></figure>
+        <figure><span class="hfig" data-fig="zone"></span><figcaption><b>2-3ゾーン</b>：場所を守る</figcaption></figure>
+      </div>
+      <ul>
+        <li><span class="kb">守り方</span> を押すたびに マンツーマン → 2-3ゾーン → 1-2-2ゾーン → 1-3-1ゾーン → 手動 と変わります。</li>
+        <li>手動以外は、攻めとボールに合わせて<b>守りが自動で動きます</b>（録画中も、なぞると守りがついてきます）。</li>
+        <li><b>手動</b>：守りも自分でなぞって動かします。</li>
+      </ul>
+      <p class="note">ミニバス（U12）・U15の公式戦では、ゾーンは使えません。</p>
+    </details>
+
+    <details><summary>保存・共有</summary>
+      <ul>
+        <li>動きを1つでも記録すると、<b>自動で保存</b>されます。開いただけ（動きなし）の作戦は保存されません。</li>
+        <li><span class="kb pri">保存</span>：名前を付けて、その場で保存します（動きがなくても残せます）。</li>
+        <li>上の作戦名（鉛筆マーク）をタップしても、名前を変えられます。</li>
+        <li><span class="kb">作戦一覧</span>：保存した作戦を「開く」「名前」「消す」。下の「見本の作戦集」から、パス＆カットやピック＆ロールなどを「使う」で追加できます。</li>
+        <li>作戦一覧から開いた作戦では、コートの左上に <span class="kb backkb">← 作戦一覧に戻る</span> が出ます。押すと一覧に戻ります（上の <span class="kb">作戦一覧</span> でも同じです）。</li>
+        <li><span class="kb">共有</span>：リンクを LINE などで送ると、相手は<b>アプリなしで</b>動きを見られます。</li>
+        <li><b>バックアップ</b>：作戦一覧のいちばん下で、すべての作戦とチーム情報を1つのコードにできます。機種変更のときは、そのコードを「読み込む」で戻せます。</li>
+      </ul>
+      <p class="note">保存先はこのスマホのブラウザの中です。大事な作戦は「共有」のリンクを自分にも送っておくと安心です。</p>
+    </details>
+
+    <details><summary>チーム情報</summary>
+      <ul>
+        <li>トップ画面の <span class="kb">チーム情報</span> から開きます。<b>チーム名・カテゴリ・チームの色・選手名簿</b>（背番号と呼び名）を登録できます。</li>
+        <li><b>チームの色</b>：攻めの丸の色が、ユニフォームの色になります。</li>
+        <li>配置モードの <span class="kb">選手を当てる</span> で、作戦の1〜5の位置に名簿の選手を当てはめます。コートの丸が本当の背番号になり、下に呼び名が出ます。</li>
+        <li>再生画面の「自分の番号」も、背番号と呼び名で選べます。</li>
+      </ul>
+      <p class="note">チーム情報はこのスマホの中だけに保存されます。共有リンクには<b>背番号だけ</b>が入り、選手の呼び名は入りません。</p>
+    </details>
+
+    <details><summary>見た目を変える</summary>
+      <div class="figs3">
+        <figure><span class="hfig" data-fig="bg-white"></span><figcaption>背景：白</figcaption></figure>
+        <figure><span class="hfig" data-fig="bg-wood"></span><figcaption>背景：木目</figcaption></figure>
+        <figure><span class="hfig" data-fig="bg-dark"></span><figcaption>背景：黒</figcaption></figure>
+      </div>
+      <ul>
+        <li>モードのボタンの右の <span class="kb">表示</span> を押すと、下の設定がまとめて出ます。</li>
+        <li><span class="kb">背景</span>：白 → 木目 → 黒。</li>
+        <li><span class="kb">平面</span><span class="kb">立体</span>：上から見るか、斜めから見るか。<b>「再生」のときだけ</b>切り替えられます（配置・録画は指で動かすので、いつも平面です）。</li>
+        <li><span class="kb">ハーフ</span><span class="kb">オール</span>：コートの半面か全面か。</li>
+        <li><span class="kb">縦向きにする</span>：スマホを縦に持つときに見やすい向き。</li>
+      </ul>
+    </details>
+
+    <div class="row"><span style="flex:1"></span><button data-close>閉じる</button></div>
+  </div>
+</div>
+<div class="overlay" id="teamDlg" hidden>
+  <div class="sheet">
+    <div class="sheethead"><h2>チーム情報</h2><button class="xclose" data-close aria-label="閉じる">×</button></div>
+    <p>入力するとすぐに保存されます。チーム情報はこのスマホの中だけに保存され、共有リンクには背番号だけが入ります。</p>
+    <label class="tf"><span>チーム名</span><input id="tName" maxlength="30" placeholder="例：〇〇ミニバス"></label>
+    <label class="tf"><span>カテゴリ</span><select id="tCat"></select></label>
+    <div class="tf"><span>チームの色（攻めの丸の色）</span><div class="tcolors" id="tColors"></div></div>
+    <div class="tf"><span>選手名簿（背番号と呼び名）</span>
+      <div class="roster" id="roster"></div>
+      <button id="addPlayer">＋ 選手を追加</button>
+    </div>
+    <div class="row"><span style="flex:1"></span><button data-close class="primary">閉じる</button></div>
+  </div>
+</div>
+<div class="overlay" id="lineupDlg" hidden>
+  <div class="sheet">
+    <div class="sheethead"><h2>選手を当てる</h2><button class="xclose" data-close aria-label="閉じる">×</button></div>
+    <p>作戦の1〜5の位置に、名簿の選手を当てはめます。コートの丸が背番号になり、下に呼び名が出ます。</p>
+    <div class="lineup" id="lineup"></div>
+    <div class="row"><button id="toTeam">チーム情報を開く</button><span style="flex:1"></span><button data-close class="primary">閉じる</button></div>
+  </div>
+</div>
+<div class="overlay" id="saveDlg" hidden>
+  <div class="sheet">
+    <h2 id="saveTitle">作戦を保存</h2>
+    <p>名前を決めて保存します。保存した作戦は「作戦一覧」から開けます。</p>
+    <div class="field"><input id="saveName" maxlength="40" aria-label="作戦の名前" placeholder="例：パス＆カット"></div>
+    <div class="row"><span style="flex:1"></span><button data-close>やめる</button><button id="saveOk" class="primary">保存する</button></div>
+  </div>
+</div>
+<div class="overlay" id="shareDlg" hidden>
+  <div class="sheet">
+    <div class="sheethead"><h2>作戦を共有</h2><button class="xclose" data-close aria-label="閉じる">×</button></div>
+    <p>このリンクを LINE などで送ると、相手はアプリを入れずにスマホで動きを見られます。作戦の中身はリンクそのものに入っています。</p>
+    <div class="field"><input id="shareLink" readonly aria-label="共有リンク"><button id="copyLink" class="primary">コピー</button></div>
+    <p>リンクが開けない場所では、こちらの「共有コード」を送って、相手の「コードから開く」に貼ってもらいます。</p>
+    <div class="field"><input id="shareCode" readonly aria-label="共有コード"><button id="copyCode">コピー</button></div>
+    <div class="field"><input id="importCode" placeholder="受け取ったコードを貼る" aria-label="受け取ったコード"><button id="importBtn">コードから開く</button></div>
+    <div class="row"><span style="flex:1"></span><button data-close>閉じる</button></div>
+  </div>
+</div>
+<div class="overlay" id="confirmDlg" hidden>
+  <div class="sheet">
+    <h2 id="confirmTitle"></h2>
+    <p id="confirmText"></p>
+    <div class="row"><span style="flex:1"></span><button data-close>やめる</button><button id="confirmOk" class="primary" style="background:var(--danger);border-color:var(--danger)">消す</button></div>
+  </div>
+</div>
+<div class="toast" id="toast" hidden></div>
+<!-- はじめてのガイド：なぞる → 録画終了 → 3Dで見る を、指のマークで順に案内する（一度終えたら出さない） -->
+<div class="guide" id="guide" hidden>
+  <div class="g-finger" id="gFinger" aria-hidden="true"><svg viewBox="0 0 24 24" width="40" height="40"><path d="M9 11V5.5a1.5 1.5 0 0 1 3 0V10h.5V8.5a1.5 1.5 0 0 1 3 0V10h.5V9.5a1.5 1.5 0 0 1 3 0V15c0 3.5-2.5 6-6 6h-1c-2.2 0-3.6-1-4.8-2.6L4.6 14.6a1.5 1.5 0 0 1 2.3-1.9L9 15Z" fill="#fff" stroke="#15181d" stroke-width="1.3" stroke-linejoin="round"/></svg></div>
+  <div class="g-bubble" id="gBubble" role="dialog" aria-live="polite">
+    <p id="gText"></p>
+    <div class="g-foot"><span id="gStep"></span><button id="gSkip">ガイドを終わる</button></div>
+  </div>
+</div>
+
+<script src="defense.js"></script>
+<script src="playbook.js"></script>
+<script>
+// ===== コート（単位はメートル。FIBA 28m×15m、左上が 0,0） =====
+const BASKETS = [[1.575, 7.5], [26.425, 7.5]];
+const OFF = ['o1', 'o2', 'o3', 'o4', 'o5'], DEF = ['x1', 'x2', 'x3', 'x4', 'x5'];
+// 色はトップ画面と共通（背景：白／木目／黒、線は青）。向き・立体も全部の作戦で共通の見え方の設定
+// 背景は 白・木目・黒 の3つ。木目は明るい画面（light）の上で、床だけ木の板にする
+const prefs = { light: true, wood: false, green: false, vertical: false, threeD: false };
+try {
+  prefs.light = localStorage.getItem('pb-bg') !== 'dark';
+  prefs.wood = localStorage.getItem('pb-floor') === 'wood';
+  prefs.vertical = localStorage.getItem('pb-orient') === 'v';
+  prefs.threeD = localStorage.getItem('pb-3d') === '1';
+} catch (e) {}
+function TH() {
+  const c = prefs.light
+    ? (prefs.green ? { line: '#00a862', ink: '#04462a', rgb: '0,168,98' } : { line: '#0a8fd6', ink: '#063d5c', rgb: '10,143,214' })
+    : (prefs.green ? { line: '#2dff9a', ink: '#c8ffe3', rgb: '45,255,154' } : { line: '#38c8ff', ink: '#c9f1ff', rgb: '56,200,255' });
+  const wood = isWood(), tc = teamColor();   // チームの色があれば、攻めの丸はその色
+  return { ...c, off: tc.c || c.line, offText: tc.c ? tc.text || '#ffffff' : prefs.light ? '#ffffff' : '#001018', def: tc.def || (prefs.light ? '#e5484d' : '#ff5a6a'),
+    court: wood ? '#ffffff' : c.line,   // 木目の床では、コートの線は白（3D画面と同じ）
+    paint: wood ? `rgba(${c.rgb},.55)` : `rgba(${c.rgb},${prefs.light ? .08 : .1})`, grid: `rgba(${c.rgb},${prefs.light ? .1 : .12})`,
+    bgA: prefs.light ? '#ffffff' : '#04131b', bgB: prefs.light ? '#edf2f5' : '#000000', shadow: prefs.light ? 'rgba(0,30,50,.18)' : `rgba(${c.rgb},.28)` };
+}
+const isWood = () => prefs.light && prefs.wood;
+// 立体は「再生」のときだけ。配置と録画は指で動かすので、いつも平面で表示する
+const view3D = () => prefs.threeD && mode === 'play';
+const bgName = () => !prefs.light ? '黒' : prefs.wood ? '木目' : '白';
+// 木目の床：板を1枚ずつ少しずつ色を変えて並べた模様（くり返し）
+function woodMarkup() {
+  let seed = 7, out = '';
+  const rnd = () => (seed = seed * 16807 % 2147483647) / 2147483647;
+  for (let row = 0; row < 6; row++) {
+    for (let x = -rnd() * 2; x < 6;) {
+      const len = 1.4 + rnd() * 2.2;
+      out += `<rect x="${x.toFixed(2)}" y="${(row * .22).toFixed(2)}" width="${(len - .02).toFixed(2)}" height=".2" fill="hsl(${(30 + rnd() * 6).toFixed(0)},${(48 + rnd() * 10).toFixed(0)}%,${(58 + rnd() * 8).toFixed(0)}%)"/>`;
+      x += len;
+    }
+  }
+  return `<pattern id="woodP" width="6" height="1.32" patternUnits="userSpaceOnUse"><rect width="6" height="1.32" fill="#a8723c"/>${out}</pattern>`;
+}
+const HI = '#ffd21f';                 // 「自分の番号」の色
+// 人数が少ないときは、出ている選手だけ描く（play.use に名前があれば、その選手だけ）
+const shownIds = () => [...(play.showDef ? DEF : []), ...OFF].filter(id => !play.use || play.use.includes(id));
+// 横向き：コートの座標そのまま。縦向き：全体を90度回し、右側のゴールが手前（下）に来る
+const VIEW = { h: { full: '-1 -1 30 17', half: '13.2 -1 15.8 17' }, v: { full: '-1 -1 17 30', half: '-1 13.2 17 15.8' } };
+const curVB = () => VIEW[prefs.vertical ? 'v' : 'h'][play.court].split(' ').map(Number);
+const toScreen = p => prefs.vertical ? [15 - p[1], p[0]] : p;
+const TILT = 55;                      // 立体にしたときの倒す角度
+const PASS_MS = 500, SHOT_MS = 850, STEP_GAP = 250;
+
+const $ = id => document.getElementById(id);
+const svg = $('board'), dyn = $('dyn');
+const clone = o => JSON.parse(JSON.stringify(o));
+const dist = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]);
+const last = a => a[a.length - 1];
+
+function courtMarkup() {
+  const F = TH();
+  const side = `
+    <rect x="0" y="5.05" width="5.8" height="4.9" fill="${F.paint}" stroke="none"/>
+    <path d="M0 5.05 H5.8 V9.95 H0"/>
+    <path d="M5.8 5.7 A1.8 1.8 0 0 1 5.8 9.3"/>
+    <path d="M5.8 5.7 A1.8 1.8 0 0 0 5.8 9.3" stroke-dasharray=".3 .25"/>
+    <path d="M0 0.9 H2.989 A6.75 6.75 0 0 1 2.989 14.1 H0"/>
+    <path d="M1.2 6.25 H1.575 A1.25 1.25 0 0 1 1.575 8.75 H1.2"/>
+    <line x1="1.2" y1="6.6" x2="1.2" y2="8.4" stroke-width=".12"/>
+    <circle cx="1.575" cy="7.5" r=".225"/>`;
+  const lines = `
+      <rect x="0" y="0" width="28" height="15"/>
+      <line x1="14" y1="0" x2="14" y2="15"/>
+      <circle cx="14" cy="7.5" r="1.8"/>
+      <g>${side}</g>
+      <g transform="matrix(-1,0,0,1,28,0)">${side}</g>`;
+  return `
+    <defs><pattern id="gridP" width="1" height="1" patternUnits="userSpaceOnUse"><path d="M1 0 H0 V1" fill="none" stroke="${F.grid}" stroke-width=".025"/></pattern>
+      <radialGradient id="floorG" cx=".5" cy=".6" r=".8"><stop offset="0" stop-color="${F.bgA}"/><stop offset="1" stop-color="${F.bgB}"/></radialGradient>${isWood() ? woodMarkup() : ''}</defs>
+    ${isWood()
+      ? `<rect x="-2" y="-2" width="32" height="19" fill="url(#woodP)"/>
+    <path d="M-2 -2 H30 V17 H-2Z M0 0 V15 H28 V0Z" fill="rgba(70,35,10,.32)" fill-rule="evenodd"/>`
+      : `<rect x="-2" y="-2" width="32" height="19" fill="url(#floorG)"/>
+    <rect x="-2" y="-2" width="32" height="19" fill="url(#gridP)"/>`}
+    ${prefs.light ? '' : `<g fill="none" stroke="${F.line}" stroke-width=".32" stroke-linecap="round" opacity=".22">${lines.replace(/fill="[^"]*" stroke="none"/g, 'fill="none" stroke="none"')}</g>`}
+    <g fill="none" stroke="${F.court}" stroke-width="${isWood() ? .09 : .08}" stroke-linecap="round">${lines}</g>`;
+}
+function defsMarkup() {
+  const F = TH();
+  const m = (id, c) => `<marker id="${id}" markerUnits="userSpaceOnUse" markerWidth=".7" markerHeight=".7" viewBox="0 0 10 10" refX="7" refY="5" orient="auto"><path d="M0 0 L10 5 L0 10z" fill="${c}"/></marker>`;
+  return m('arInk', F.ink) + m('arHi', HI) + m('arDef', F.def);
+}
+
+// ===== 作戦データ =====
+// play = { id, name, court, floor, showDef, init:{pos:{o1:[x,y]...}, holder}, steps:[{moves:[...]}] }
+// move: {k:'run'|'dribble', id, pts:[[x,y,ms]...]} / {k:'pass', from, to} / {k:'shot', from}
+function wp(points, ms) {   // 折れ線を等速でなぞったことにする（見本用）
+  const segs = []; let L = 0;
+  for (let i = 1; i < points.length; i++) { const d = dist(points[i - 1], points[i]); segs.push(d); L += d; }
+  const out = [[...points[0], 0]]; let acc = 0;
+  for (let i = 1; i < points.length; i++) {
+    for (let s = 1; s <= 6; s++) {
+      const k = s / 6, p = [points[i - 1][0] + (points[i][0] - points[i - 1][0]) * k, points[i - 1][1] + (points[i][1] - points[i - 1][1]) * k];
+      out.push([+p[0].toFixed(2), +p[1].toFixed(2), Math.round((acc + segs[i - 1] * k) / L * ms)]);
+    }
+    acc += segs[i - 1];
+  }
+  return out;
+}
+function defAt(p) { const b = BASKETS[1], d = dist(p, b); return [+(p[0] + (b[0] - p[0]) / d * 1.2).toFixed(2), +(p[1] + (b[1] - p[1]) / d * 1.2).toFixed(2)]; }
+function samplePlay() {
+  const pos = { o1: [17.4, 7.5], o2: [20.2, 2.4], o3: [20.2, 12.6], o4: [25.8, 1.6], o5: [25.8, 13.4] };
+  OFF.forEach((o, i) => pos[DEF[i]] = defAt(pos[o]));
+  return {
+    id: 'sample', name: '見本：パス＆カット', court: 'half', floor: 'wood', showDef: true,
+    init: { pos, holder: 'o1' },
+    steps: [
+      { moves: [{ k: 'run', id: 'o4', pts: wp([[25.8, 1.6], [24.6, 3.4]], 700) }, { k: 'pass', from: 'o1', to: 'o2' }] },
+      { moves: [{ k: 'run', id: 'o1', pts: wp([[17.4, 7.5], [19.6, 6.6], [24.6, 7.1]], 1300) }, { k: 'run', id: 'o3', pts: wp([[20.2, 12.6], [18.2, 8.6]], 1000) }, { k: 'pass', from: 'o2', to: 'o1' }] },
+      { moves: [{ k: 'shot', from: 'o1' }] },
+    ],
+  };
+}
+function newPlay() {
+  const pos = { o1: [17.4, 7.5], o2: [20.2, 2.4], o3: [20.2, 12.6], o4: [25.8, 1.6], o5: [25.8, 13.4] };
+  OFF.forEach((o, i) => pos[DEF[i]] = defAt(pos[o]));
+  return { id: Date.now().toString(36), name: '新しい作戦', court: 'half', floor: 'wood', showDef: true, defense: 'man', init: { pos, holder: 'o1' }, steps: [{ moves: [] }] };
+}
+
+// 状態の計算
+function applyStep(s, step) {
+  for (const m of step.moves) {
+    if (m.k === 'run' || m.k === 'dribble') s.pos[m.id] = last(m.pts).slice(0, 2);
+    else if (m.k === 'pass') { s.holder = m.to; s.ball = null; }
+    else if (m.k === 'shot') { s.ball = nearBasket(s.pos[m.from]); s.holder = null; }
+  }
+  return s;
+}
+function stateAt(play, n) {
+  const s = { pos: clone(play.init.pos), holder: play.init.holder, ball: null };
+  for (let i = 0; i < n; i++) applyStep(s, play.steps[i]);
+  return s;
+}
+const nearBasket = p => dist(p, BASKETS[0]) < dist(p, BASKETS[1]) ? BASKETS[0].slice() : BASKETS[1].slice();
+// ボールは持っている選手の右上に置く（選手の丸と重ならない距離）
+const BOFF = .66;
+const ballXY = s => s.holder ? [s.pos[s.holder][0] + BOFF, s.pos[s.holder][1] - BOFF] : (s.ball || [14, 7.5]);
+function interp(pts, t) {
+  if (t <= 0) return pts[0].slice(0, 2);
+  for (let i = 1; i < pts.length; i++) if (pts[i][2] >= t) {
+    const a = pts[i - 1], b = pts[i], k = (t - a[2]) / Math.max(1, b[2] - a[2]);
+    return [a[0] + (b[0] - a[0]) * k, a[1] + (b[1] - a[1]) * k];
+  }
+  return last(pts).slice(0, 2);
+}
+
+// ===== 描画 =====
+function zigzag(pts) {   // ドリブルはギザギザの線
+  const P = pts.map(p => [p[0], p[1]]), out = [P[0]]; let carry = 0, n = 0;
+  for (let i = 1; i < P.length; i++) {
+    const a = P[i - 1], b = P[i], L = dist(a, b); if (L === 0) continue;
+    const ux = (b[0] - a[0]) / L, uy = (b[1] - a[1]) / L;
+    for (let d = .22 - carry; d < L; d += .22) { const s = (n++ % 2 ? 1 : -1) * .15; out.push([a[0] + ux * d - uy * s, a[1] + uy * d + ux * s]); }
+    carry = (L - (.22 - carry)) % .22;
+  }
+  out.push(last(P));
+  return 'M' + out.map(p => p[0].toFixed(2) + ' ' + p[1].toFixed(2)).join(' L');
+}
+function arrowPath(a, b, cut = .7) { const d = dist(a, b); if (d < .01) return ''; const k = Math.max(0, (d - cut) / d); return `M${a[0]} ${a[1]} L${a[0] + (b[0] - a[0]) * k} ${a[1] + (b[1] - a[1]) * k}`; }
+function trimmedPts(pts) { // 矢印の先が選手の丸に隠れないよう、最後を少し縮める
+  const P = pts.map(p => [p[0], p[1]]); if (P.length < 2) return P;
+  const e = last(P), q = P[P.length - 2], d = dist(q, e); if (d > .66) P[P.length - 1] = [e[0] + (q[0] - e[0]) * .66 / d, e[1] + (q[1] - e[1]) * .66 / d];
+  return P;
+}
+function movesMarkup(moves, posEnd, ballStart, opts = {}) {
+  const F = TH(), self = opts.self, out = [];
+  for (const m of moves) {
+    const mine = self && (m.id === self || m.from === self || m.to === self);
+    const who = m.id || m.from, isDef = who && who[0] === 'x';
+    const col = mine ? HI : isDef ? F.def : F.ink, mk = mine ? 'arHi' : isDef ? 'arDef' : 'arInk';
+    const w = mine ? .16 : .085, op = opts.faint ? .28 : (self && !mine ? .35 : 1);
+    const under = mine ? `stroke="#000" stroke-opacity=".55" stroke-width="${w + .1}"` : '';
+    let d = '', dash = '';
+    if (m.k === 'run') d = 'M' + trimmedPts(m.pts).map(p => p[0].toFixed(2) + ' ' + p[1].toFixed(2)).join(' L');
+    else if (m.k === 'dribble') d = zigzag(trimmedPts(m.pts));
+    else if (m.k === 'pass') { d = arrowPath(m.from ? posEnd[m.from] : ballStart, posEnd[m.to]); dash = 'stroke-dasharray=".35 .22"'; }
+    else if (m.k === 'shot') { const a = posEnd[m.from], b = nearBasket(a), mid = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2 - 1.4]; d = `M${a[0]} ${a[1]} Q${mid[0]} ${mid[1]} ${b[0]} ${b[1]}`; dash = 'stroke-dasharray=".2 .18"'; }
+    if (!d) continue;
+    if (under) out.push(`<path d="${d}" fill="none" ${under} ${dash} stroke-linecap="round" stroke-linejoin="round" opacity="${op}"/>`);
+    out.push(`<path d="${d}" fill="none" stroke="${col}" stroke-width="${w}" ${dash} stroke-linecap="round" stroke-linejoin="round" marker-end="url(#${mk})" opacity="${op}"/>`);
+  }
+  return out.join('');
+}
+function piecesMarkup(pos, opts = {}) {
+  const F = TH(), out = [];
+  const ids = shownIds();
+  for (const id of ids) {
+    const [x, y] = pos[id], isOff = id[0] === 'o', n = id[1];
+    const mine = opts.self === id, op = opts.self && !mine ? .4 : 1;
+    const ring = mine ? `<circle r=".86" fill="none" stroke="${HI}" stroke-width=".16"/>` : '';
+    const rim = prefs.light ? '#fff' : '#000';
+    const num = numOf(id), fs = num.length > 1 ? .6 : .74, nm = nameOf(id);
+    // 呼び名は丸の下に、ふちどりをつけて床の上でも読めるように
+    const nameTag = nm ? `<text y="1.18" font-size=".46" text-anchor="middle" fill="${prefs.light ? '#0d1a22' : '#ffffff'}" stroke="${prefs.light ? '#ffffff' : '#000000'}" stroke-width=".14" paint-order="stroke" font-weight="700">${esc(nm)}</text>` : '';
+    const body = isOff
+      ? `<circle r=".62" fill="${F.off}" stroke="${rim}" stroke-width=".07"/><text y="${(fs * .35).toFixed(2)}" font-size="${fs}" text-anchor="middle" fill="${F.offText}" font-family="Barlow Condensed, Arial" font-weight="700">${esc(num)}</text>${nameTag}`
+      : `<circle r=".56" fill="${F.def}" stroke="${rim}" stroke-width=".06"/><text y=".19" font-size=".54" text-anchor="middle" fill="#fff" font-family="Barlow Condensed, Arial" font-weight="700">X${n}</text>`;
+    // 縦向きでは全体が回っているので、番号だけ逆に回して読める向きにする
+    out.push(`<g data-id="${id}" transform="translate(${x.toFixed(3)} ${y.toFixed(3)})" opacity="${op}" style="cursor:grab"><circle r="1.05" fill="transparent"/>${ring}<g transform="rotate(${prefs.vertical ? -90 : 0})">${body}</g></g>`);
+  }
+  return out.join('');
+}
+function ballMarkup(p, scale = 1) {
+  const r = .4 * scale;
+  return `<g data-id="B" transform="translate(${p[0].toFixed(3)} ${p[1].toFixed(3)})" style="cursor:grab"><circle r=".82" fill="transparent"/>
+    <circle r="${r}" fill="#e8742a" stroke="#4a2008" stroke-width=".045"/><path d="M${-r} 0 H${r} M0 ${-r} V${r}" stroke="#4a2008" stroke-width=".03"/></g>`;
+}
+// ===== 立体表示：選手はこけしのような人形にして、床に立たせる =====
+function figDefsMarkup() {
+  const F = TH();
+  const body = 'M9 97 C9 72 10 54 13 47 H27 C30 54 31 72 31 97 C24 100 16 100 9 97Z';
+  const kok = (id, col) => `<symbol id="${id}" viewBox="0 0 40 100">
+      <path d="${body}" fill="${col}"/><path d="${body}" fill="url(#kShade)"/>
+      <circle cx="20" cy="32" r="12" fill="${col}"/><circle cx="20" cy="32" r="12" fill="url(#kShadeR)"/>
+    </symbol>`;
+  return `<defs>
+    <linearGradient id="kShade" x1="0" x2="1"><stop offset="0" stop-color="#fff" stop-opacity=".45"/><stop offset=".45" stop-color="#fff" stop-opacity="0"/><stop offset="1" stop-color="#000" stop-opacity=".35"/></linearGradient>
+    <radialGradient id="kShadeR" cx=".35" cy=".3" r=".8"><stop offset="0" stop-color="#fff" stop-opacity=".5"/><stop offset=".6" stop-color="#fff" stop-opacity="0"/><stop offset="1" stop-color="#000" stop-opacity=".22"/></radialGradient>
+    <radialGradient id="kBall" cx=".35" cy=".3" r=".75"><stop offset="0" stop-color="#ffb27a"/><stop offset=".55" stop-color="#e8742a"/><stop offset="1" stop-color="#7a2c08"/></radialGradient>
+  </defs>${kok('kOff', F.off)}${kok('kDef', F.def)}`;
+}
+function pct(p) { const vb = curVB(), s = toScreen(p); return [(s[0] - vb[0]) / vb[2] * 100, (s[1] - vb[1]) / vb[3] * 100]; }
+function drawFigs(pos, ball, opts = {}) {
+  const figs = $('figs');
+  if (!view3D() || !pos) { figs.innerHTML = ''; return; }
+  const vb = curVB(), F = TH(), w = 100 / vb[2];
+  const ids = shownIds();
+  let html = '';
+  // パイロンも選手と同じように床に立てる（選手より奥に描く）
+  for (const it of play.items || []) {
+    if (it.t !== 'cone') continue;
+    const [l, t] = pct([it.x, it.y]);
+    html += `<div class="fig" style="left:${l}%;top:${t}%;width:${w}%"><svg viewBox="0 0 40 46">${CONE3D}</svg></div>`;
+  }
+  for (const id of ids) {
+    const [l, t] = pct(pos[id]), isOff = id[0] === 'o', mine = opts.self === id, op = opts.self && !mine ? .45 : 1;
+    const label = esc(numOf(id));
+    html += `<div class="fig" style="left:${l}%;top:${t}%;width:${w * 1.05}%;opacity:${op}"><svg viewBox="0 0 40 100">
+      ${mine ? `<path d="M9 97 C9 72 10 54 13 47 H27 C30 54 31 72 31 97 C24 100 16 100 9 97Z" fill="none" stroke="${HI}" stroke-width="5"/><circle cx="20" cy="32" r="13" fill="none" stroke="${HI}" stroke-width="4"/>` : ''}
+      <use href="#${isOff ? 'kOff' : 'kDef'}"/>
+      <text x="20" y="80" font-size="${isOff ? (label.length > 1 ? 15 : 19) : 14}" text-anchor="middle" fill="${isOff ? F.offText : '#fff'}" font-family="Barlow Condensed, Arial" font-weight="700">${label}</text></svg></div>`;
+  }
+  if (ball) {
+    const [l, t] = pct(ball.p), lift = (ball.h / .5 * 100).toFixed(0);
+    html += `<div class="fig" style="left:${l}%;top:${t}%;width:${w * .5}%;transform:translate(-50%,-100%) rotateX(-${TILT}deg) translateY(-${lift}%)"><svg viewBox="0 0 10 10"><circle cx="5" cy="5" r="4.6" fill="url(#kBall)"/></svg></div>`;
+  }
+  figs.innerHTML = html;
+}
+function shadowsMarkup(pos, ball) {
+  const F = TH(), ids = shownIds();
+  let s = ids.map(id => `<ellipse cx="${pos[id][0]}" cy="${pos[id][1]}" rx=".7" ry=".7" fill="${F.shadow}"/>`).join('');
+  if (ball) s += `<circle cx="${ball.p[0]}" cy="${ball.p[1]}" r="${.22 / (1 + ball.h * .25)}" fill="${F.shadow}"/>`;
+  return s;
+}
+function ghostsMarkup(list) {
+  return list.map(([x, y]) => `<circle cx="${x}" cy="${y}" r=".56" fill="none" stroke="${TH().ink}" stroke-width=".05" stroke-dasharray=".12 .1" opacity=".45"/>`).join('');
+}
+
+// ===== アプリの状態 =====
+let store = {}, play, mode = 'rec', cur = 0, selfId = null, speed = 1, shared = false;
+const SPEEDS = [0.5, 1, 1.5];
+function loadStore() {
+  try { store = JSON.parse(localStorage.getItem('pb-plays') || '{}') || {}; } catch (e) { store = {}; }
+  for (const k in store) if (!worthSaving(store[k])) delete store[k];   // 以前に保存された、開いただけの作戦は読み込まない
+  if (!Object.keys(store).length) { const s = samplePlay(); store[s.id] = s; }
+  let id = null; try { id = localStorage.getItem('pb-current'); } catch (e) {}
+  play = store[id] || Object.values(store)[0];
+}
+let saveTimer = null;
+// 動きが1つもない作戦（開いただけ）は保存しない。「保存」ボタンで保存したもの（kept）は動きがなくても残す
+const worthSaving = p => p.kept || p.steps.some(s => s.moves.length) || !!(p.items && p.items.length) || !!(p.marks && p.marks.length);
+function persist() {
+  const out = {};
+  for (const k in store) if (worthSaving(store[k])) out[k] = store[k];
+  localStorage.setItem('pb-plays', JSON.stringify(out));
+}
+function save() {
+  if (shared) return;
+  store[play.id] = play;
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(() => { try { persist(); if (worthSaving(play)) localStorage.setItem('pb-current', play.id); } catch (e) {} }, 200);
+}
+const hasMoves = () => play.steps.some(s => s.moves.length);
+
+// ===== チーム情報（このスマホの中だけに保存。共有リンクには背番号だけが入る） =====
+// team = { name, cat, color, roster: [{ no: '4', name: 'たろう' }] }。作戦には play.lineup = { o1: '4', ... }（背番号だけ）を持たせる
+const CATS = ['', 'ミニバス 男子', 'ミニバス 女子', '中学 男子', '中学 女子', '高校 男子', '高校 女子', '一般', 'その他'];
+// チームの色：攻めの丸の色。赤・オレンジのときは、守りを灰色にして見分けやすくする
+const TEAM_COLORS = [
+  { c: '', name: '標準' }, { c: '#1d4ed8', name: '青' }, { c: '#0f2a5c', name: '紺' }, { c: '#15803d', name: '緑' },
+  { c: '#c1121f', name: '赤', def: '#475569' }, { c: '#ea580c', name: 'オレンジ', def: '#475569' }, { c: '#7c3aed', name: '紫' },
+  { c: '#111827', name: '黒' }, { c: '#facc15', name: '黄', text: '#111827' }, { c: '#f8fafc', name: '白', text: '#111827' },
+];
+let team = { name: '', cat: '', color: '', roster: [] };
+try { Object.assign(team, JSON.parse(localStorage.getItem('pb-team') || '{}')); } catch (e) {}
+function saveTeam() { try { localStorage.setItem('pb-team', JSON.stringify(team)); } catch (e) {} }
+const teamColor = () => TEAM_COLORS.find(t => t.c === team.color) || TEAM_COLORS[0];
+// 丸に書く番号：攻めは当てた背番号（当てていなければ 1〜5）、守りは X1〜X5
+const numOf = id => id[0] === 'x' ? 'X' + id[1] : String((play.lineup && play.lineup[id]) || id[1]);
+// 呼び名：名簿は自分のスマホの中だけなので、共有で受け取った作戦では出さない
+const nameOf = id => { const no = !shared && id[0] === 'o' && play.lineup && play.lineup[id]; const r = no && team.roster.find(r => r.no === no); return r ? r.name : ''; };
+
+// ===== 画面を描く（編集中） =====
+let live = null;   // ドラッグ中の一時データ
+// ===== 道具：パイロン・マーカー・ペンの書き込み =====
+// play.items = [{ t: 'cone' | 'marker', x, y }]、play.marks = [{ pts: [[x, y]...] }]。動きとは関係なく、いつもコートに置いてある
+let tool = 'move';
+const PEN = '#ff3b6b';
+const CONE = `<path d="M0 -.46 L.3 .22 H-.3Z" fill="#ff7a1a" stroke="#fff" stroke-width=".05" stroke-linejoin="round"/><path d="M-.13 -.16 H.13" stroke="#fff" stroke-width=".09"/><rect x="-.42" y=".18" width=".84" height=".14" rx=".05" fill="#e0600c"/>`;
+const MARKER = `<circle r=".3" fill="#ffd21f" stroke="#fff" stroke-width=".06"/><circle r=".1" fill="#b38f00"/>`;
+// 立体表示のパイロン（横から見た形：三角すい＋白い帯＋四角い台）
+const CONE3D = `<rect x="3" y="37" width="34" height="8" rx="2" fill="#e0600c"/><path d="M20 2 L31 38 H9 Z" fill="#ff7a1a"/><path d="M20 2 L31 38 H20 Z" fill="#000" opacity=".14"/><path d="M14.6 20 H25.4 L27.2 26.5 H12.8 Z" fill="#fff"/><path d="M14.6 20 H25.4 L27.2 26.5 H20 Z" fill="#000" opacity=".08"/>`;
+// 道具箱の絵は、コートに置くものと同じ形
+$('tray').querySelector('[data-drag="cone"] svg').innerHTML = CONE;
+$('tray').querySelector('[data-drag="marker"] svg').innerHTML = MARKER;
+function itemsMarkup(L) {
+  const items = (play.items || []).map((it, i) => L && L.type === 'item' && L.i === i && L.at ? { ...it, x: L.at[0], y: L.at[1] } : it);
+  if (L && L.type === 'newitem' && L.at && L.onBoard) items.push({ t: L.t, x: L.at[0], y: L.at[1] });   // 道具箱から運んでいる途中
+  const marks = [...(play.marks || []), ...(L && L.type === 'pen' ? [{ pts: L.pts }] : [])];
+  const touch = mode === 'setup' && tool === 'move' ? 'style="cursor:grab"' : 'pointer-events="none"';
+  return marks.map(m => `<path d="M${m.pts.map(p => p[0] + ' ' + p[1]).join(' L')}" fill="none" stroke="${PEN}" stroke-width=".14" stroke-linecap="round" stroke-linejoin="round" opacity=".85" pointer-events="none"/>`).join('')
+    + items.map((it, i) => view3D() && it.t === 'cone'
+      ? `<ellipse cx="${it.x}" cy="${it.y}" rx=".45" ry=".45" fill="${TH().shadow}"/>`   // 立体表示では、パイロンは立てて描くので床には影だけ
+      : `<g data-item="${i}" transform="translate(${it.x} ${it.y}) rotate(${prefs.vertical ? -90 : 0})" ${touch}><circle r=".6" fill="transparent"/>${it.t === 'cone' ? CONE : MARKER}</g>`).join('');
+}
+// コートの上（盤の四角の中）で指を離したか
+const onBoard = e => { const r = svg.getBoundingClientRect(); return e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom; };
+// 道具箱からパイロン・マーカーをつかんで、コートへ運ぶ
+document.querySelectorAll('[data-drag]').forEach(el => {
+  el.addEventListener('pointerdown', e => {
+    if (mode !== 'setup' || live) return;
+    live = { type: 'newitem', t: el.dataset.drag, at: null, onBoard: false, moved: false };
+    el.setPointerCapture(e.pointerId); e.preventDefault();
+  });
+  el.addEventListener('pointermove', e => {
+    if (!live || live.type !== 'newitem') return;
+    live.moved = true; live.onBoard = onBoard(e); live.at = toM(e); drawEdit();
+  });
+  const end = e => {
+    if (!live || live.type !== 'newitem') return;
+    const L = live; live = null;
+    if (L.moved && onBoard(e)) { const at = toM(e).map(v => +v.toFixed(2)); (play.items = play.items || []).push({ t: L.t, x: at[0], y: at[1] }); save(); updateUI(); }
+    else if (!L.moved) toast(`${L.t === 'cone' ? 'パイロン' : 'マーカー'}は、コートまでドラッグして置きます`);
+    drawEdit();
+  };
+  el.addEventListener('pointerup', end);
+  el.addEventListener('pointercancel', () => { live = null; drawEdit(); });
+});
+// 道具を使う：ペンは書く、消すは近くのものを消す
+function toolDown(e) {
+  const at = toM(e).map(v => +v.toFixed(2));
+  if (tool === 'pen') { live = { type: 'pen', pts: [at] }; svg.setPointerCapture(e.pointerId); e.preventDefault(); return; }
+  if (tool === 'erase') {
+    const items = play.items || [], marks = play.marks || [];
+    const i = items.findIndex(it => dist([it.x, it.y], at) < .8);
+    if (i >= 0) items.splice(i, 1);
+    else { const j = marks.findIndex(m => m.pts.some(p => dist(p, at) < .7)); if (j >= 0) marks.splice(j, 1); else return; }
+    save(); drawEdit(); updateUI();
+  }
+}
+function drawEdit() {
+  const S = stateAt(play, cur), E = applyStep(clone(S), play.steps[cur]);
+  const ghosts = [];
+  for (const m of play.steps[cur].moves) if (m.pts) ghosts.push(S.pos[m.id]);
+  let html = '';
+  if (cur > 0) { const P = stateAt(play, cur - 1); html += movesMarkup(play.steps[cur - 1].moves, S.pos, ballXY(P), { faint: true }); }
+  html += ghostsMarkup(ghosts);
+  html += movesMarkup(play.steps[cur].moves, E.pos, ballXY(S));
+  const pos = clone(E.pos);
+  let bp = ballXY(E);
+  if (live && live.type === 'path') {
+    pos[live.id] = last(live.pts).slice(0, 2);
+    html += movesMarkup([{ k: live.kind, id: live.id, pts: live.pts }], pos, bp);
+    if (live.kind === 'dribble') bp = [pos[live.id][0] + BOFF, pos[live.id][1] - BOFF];
+  }
+  if (live && live.type === 'ball') {
+    html += `<path d="${arrowPath(live.from, live.at, 0)}" stroke="${TH().ink}" stroke-width=".085" stroke-dasharray=".35 .22" fill="none"/>`;
+    bp = live.at;
+  }
+  if (live && live.type === 'setup') pos[live.id] = live.at;
+  withAutoDef(pos, live && live.type === 'ball' ? null : E.holder, bp);   // なぞっている最中も守りがついてくる
+  html = itemsMarkup(live) + html;   // パイロンなどは選手より下に描く
+  if (view3D()) { const b = { p: bp, h: 1.1 }; dyn.innerHTML = html + shadowsMarkup(pos, b); drawFigs(pos, b); return; }
+  drawFigs(null);
+  html += piecesMarkup(pos);
+  html += ballMarkup(mode === 'setup' && live && live.type === 'ball' ? live.at : bp);
+  dyn.innerHTML = html;
+}
+
+// ===== 再生 =====
+function timeline() {
+  const tl = []; let t = 0;
+  play.steps.forEach((step, i) => {
+    if (!step.moves.length) return;
+    const S = stateAt(play, i);
+    const A = Math.max(0, ...step.moves.filter(m => m.pts).map(m => last(m.pts)[2]));
+    // パス・シュートは、ふつうは走り終わってから順番に。at（ミリ秒）があれば、走っている途中のその時刻に出す
+    let s = A;
+    const B = step.moves.filter(m => !m.pts).map(m => {
+      const b = { m, dur: m.k === 'shot' ? SHOT_MS : PASS_MS, s: m.at != null ? m.at : s };
+      s = b.s + b.dur; return b;
+    });
+    const total = Math.max(A, ...B.map(b => b.s + b.dur)) + STEP_GAP;
+    tl.push({ i, S, A, B, total, start: t }); t += total;
+  });
+  return { tl, total: t };
+}
+// 守り方が自動（マンツーマン・ゾーン）なら、守りの位置は攻めとボールから毎回決める
+const defMode = () => PBDefense.modeOf(play);
+const autoDef = () => play.showDef && defMode() !== 'manual';
+const defBall = (pos, holder, bp) => holder ? pos[holder] : bp;
+function withAutoDef(pos, holder, bp) {
+  if (autoDef()) Object.assign(pos, PBDefense.at(defMode(), pos, defBall(pos, holder, bp), holder));
+  return pos;
+}
+function frameAt(T, t) {
+  const f = frameRaw(T, t);
+  if (autoDef()) {
+    const sample = u => { const g = u === t ? f : frameRaw(T, u); return { pos: g.pos, ball: defBall(g.pos, g.holder, g.bp), holder: g.holder }; };
+    Object.assign(f.pos, PBDefense.smooth(defMode(), sample, t));
+  }
+  return f;
+}
+function frameRaw(T, t) {
+  let seg = T.tl.find(s => t < s.start + s.total) || last(T.tl);
+  const local = Math.min(t - seg.start, seg.total), S = seg.S, step = play.steps[seg.i];
+  const pos = clone(S.pos);
+  for (const m of step.moves) if (m.pts) pos[m.id] = interp(m.pts, local);
+  let holder = S.holder, ball = S.ball ? S.ball.slice() : null, bp, air = 0, flying = false;
+  for (const { m, dur, s } of seg.B) {
+    if (local < s) break;
+    const from = m.k === 'pass' ? (m.from ? [pos[m.from][0] + BOFF, pos[m.from][1] - BOFF] : ball) : [pos[m.from][0] + BOFF, pos[m.from][1] - BOFF];
+    const to = m.k === 'pass' ? [pos[m.to][0] + BOFF, pos[m.to][1] - BOFF] : nearBasket(pos[m.from]);
+    if (local < s + dur) {
+      const k = (local - s) / dur, e = k < .5 ? 2 * k * k : 1 - Math.pow(-2 * k + 2, 2) / 2;
+      bp = [from[0] + (to[0] - from[0]) * e, from[1] + (to[1] - from[1]) * e];
+      if (m.k === 'shot') air = Math.sin(Math.PI * k);
+      flying = true;
+      break;
+    }
+    if (m.k === 'pass') holder = m.to; else { holder = null; ball = to; }
+  }
+  if (!flying) bp = holder ? [pos[holder][0] + BOFF, pos[holder][1] - BOFF] : ball || [14, 7.5];
+  const posEnd = applyStep(clone(S), step).pos;
+  return { pos, bp, air, step, posEnd, S, segIndex: seg.i, holder: flying ? null : holder };
+}
+let anim = null;
+function drawFrame(f) {
+  const lines = itemsMarkup() + movesMarkup(f.step.moves, f.posEnd, ballXY(f.S), { self: selfId });
+  if (view3D()) {   // 立体：ボールは手の高さ、シュートは高く弧を描く
+    const b = { p: f.bp, h: 1.1 + f.air * 2.6 };
+    dyn.innerHTML = lines + shadowsMarkup(f.pos, b); drawFigs(f.pos, b, { self: selfId }); return;
+  }
+  drawFigs(null);
+  // 平面：シュート中のボールは画面の上方向に浮かせて、少し大きく見せる
+  const up = prefs.vertical ? [-1.4, 0] : [0, -1.4];
+  dyn.innerHTML = lines + piecesMarkup(f.pos, { self: selfId }) + ballMarkup([f.bp[0] + up[0] * f.air, f.bp[1] + up[1] * f.air], 1 + f.air * .9);
+}
+// くり返し再生（ON/OFF はこの端末で覚えておく）
+const LOOP_HOLD = 900;
+let loop = false;
+try { loop = localStorage.getItem('pb-loop') === '1'; } catch (e) {}
+function startPlay(onlyStep) {
+  stopPlay();
+  const T = timeline();
+  if (!T.tl.length) { toast('まだ動きがありません。「録画」で選手をなぞってください'); return; }
+  let from = 0, to = T.total;
+  if (onlyStep) {
+    let seg = T.tl.find(s => s.i >= cur) || T.tl[0];
+    from = seg.start; to = seg.start + seg.total;
+    cur = seg.i;
+  }
+  let t0 = performance.now(), holdUntil = 0;
+  anim = { raf: 0 };
+  $('playBtn').textContent = '■ 停止';
+  const tick = now => {
+    // くり返し：最後の形で少し止まってから、最初（1ステップなら、そのステップの最初）に戻る
+    if (holdUntil) {
+      if (now < holdUntil) { anim.raf = requestAnimationFrame(tick); return; }
+      holdUntil = 0; t0 = now;
+    }
+    const t = from + (now - t0) * speed * (selfId ? .8 : 1);
+    if (t >= to) {
+      drawFrame(frameAt(T, to - 1));
+      if (loop) { holdUntil = now + LOOP_HOLD; anim.raf = requestAnimationFrame(tick); return; }
+      if (onlyStep) { const nx = T.tl.find(s => s.i > cur); cur = nx ? nx.i : (T.tl[0] ? T.tl[0].i : 0); }
+      stopPlay(); return;
+    }
+    const f = frameAt(T, t); cur = f.segIndex; drawFrame(f); updateUI(false);
+    anim.raf = requestAnimationFrame(tick);
+  };
+  anim.raf = requestAnimationFrame(tick);
+}
+function stopPlay() { if (anim) cancelAnimationFrame(anim.raf); anim = null; $('playBtn').textContent = '▶ 再生'; updateUI(false); }
+function drawPlayIdle() {   // 再生モードで止まっているときは、今のステップの最初を見せる
+  const T = timeline();
+  if (!T.tl.length) { drawEdit(); return; }
+  const seg = T.tl.find(s => s.i >= cur) || T.tl[0];
+  drawFrame(frameAt(T, seg.start));
+}
+
+// ===== 操作 =====
+function toM(e) { const p = svg.createSVGPoint(); p.x = e.clientX; p.y = e.clientY; const q = p.matrixTransform($('world').getScreenCTM().inverse()); return [Math.max(-.8, Math.min(28.8, q.x)), Math.max(-.8, Math.min(15.8, q.y))]; }
+svg.addEventListener('pointerdown', e => {
+  if (mode === 'play' || live) return;
+  if (mode === 'setup' && tool !== 'move') { toolDown(e); return; }
+  const itemEl = e.target.closest('[data-item]');
+  if (mode === 'setup' && itemEl && !e.target.closest('[data-id]')) {   // 置いたパイロン・マーカーはドラッグで動かせる
+    live = { type: 'item', i: +itemEl.dataset.item, at: null }; $('tray').classList.add('drop'); svg.setPointerCapture(e.pointerId); e.preventDefault(); return;
+  }
+  const g = e.target.closest('[data-id]'); if (!g) return;
+  const id = g.dataset.id, at = toM(e);
+  if (id[0] === 'x' && autoDef()) { toast('守りは「守り方」に合わせて自動で動きます。「手動」にすると動かせます'); return; }
+  const S = stateAt(play, cur), E = applyStep(clone(S), play.steps[cur]);
+  if (mode === 'setup') {
+    if (hasMoves()) { toast('動きを録画した後は配置を変えられません。「動きを全部消す」で戻せます'); return; }
+    live = { type: id === 'B' ? 'ball' : 'setup', id, at, from: ballXY(E), t0: performance.now(), moved: false };
+  } else if (id === 'B') {
+    live = { type: 'ball', from: ballXY(E), at, holder: E.holder };
+  } else {
+    live = { type: 'path', id, kind: E.holder === id ? 'dribble' : 'run', pts: [[...E.pos[id], 0]], t0: performance.now() };
+    live.press = setTimeout(() => longPress(id), 600);   // 動かさずに押し続けたら、その選手の動きを消す
+  }
+  svg.setPointerCapture(e.pointerId);
+  e.preventDefault();
+});
+svg.addEventListener('pointermove', e => {
+  if (!live) return;
+  const at = toM(e);
+  if (live.type === 'path') {
+    if (live.press && dist(live.pts[0], at) > .3) { clearTimeout(live.press); live.press = null; }   // 動かし始めたら長押しではない
+    if (dist(last(live.pts), at) > .12) live.pts.push([+at[0].toFixed(2), +at[1].toFixed(2), Math.round(performance.now() - live.t0)]);
+  } else if (live.type === 'pen') {
+    if (dist(last(live.pts), at) > .12) live.pts.push([+at[0].toFixed(2), +at[1].toFixed(2)]);
+  } else { live.moved = true; live.at = at; }
+  drawEdit();
+});
+// 手ブレ補正：なぞった線のプルプルをならす
+// ① 指を止めたあとの小さな揺れ（最後の点から0.45m以内をうろうろした分）は、1点にまとめる。止まっていた時間も縮めて、着いたらそこで止まる
+// ② 途中の細かい揺れは、前後2点ずつとの平均でならす（始まりと終わりの位置は変えない）
+function steady(pts) {
+  if (pts.length < 3) return pts;
+  const end = last(pts); let k = pts.length - 1;
+  while (k > 1 && dist(pts[k - 1], end) < .45) k--;
+  const P = pts.slice(0, k + 1); P[P.length - 1] = [end[0], end[1], ...P[P.length - 1].slice(2)];
+  return P.map((p, i) => {
+    if (i === 0 || i === P.length - 1) return p;
+    let sx = 0, sy = 0, n = 0;
+    for (let j = Math.max(0, i - 2); j <= Math.min(P.length - 1, i + 2); j++) { sx += P[j][0]; sy += P[j][1]; n++; }
+    return [+(sx / n).toFixed(2), +(sy / n).toFixed(2), ...p.slice(2)];
+  });
+}
+// 録画中に選手を長押し：このステップのその選手の動き（走る・ドリブル）だけを消す。ほかの選手の動きは残る
+function longPress(id) {
+  if (!live || live.type !== 'path' || live.id !== id) return;
+  live = null;
+  const step = play.steps[cur], before = step.moves.length;
+  step.moves = step.moves.filter(m => !(m.pts && m.id === id));
+  toast(step.moves.length < before ? `${label(id)}の動きを消しました。なぞり直せます` : `${label(id)}は、このステップではまだ動いていません`);
+  try { navigator.vibrate && navigator.vibrate(30); } catch (e) {}
+  save(); drawEdit(); updateUI();
+}
+const endDrag = e => {
+  if (!live) return;
+  const L = live; live = null;
+  if (L.press) clearTimeout(L.press);
+  if (L.type === 'pen') { if (L.pts.length > 1) (play.marks = play.marks || []).push({ pts: steady(L.pts) }); save(); drawEdit(); updateUI(); return; }
+  if (L.type === 'item') {
+    $('tray').classList.remove('drop');
+    if (L.at && e && e.type === 'pointerup' && !onBoard(e)) { play.items.splice(L.i, 1); toast('外に出したので消しました'); }   // コートの外（道具箱など）へ出すと消える
+    else if (L.at) { play.items[L.i].x = +L.at[0].toFixed(2); play.items[L.i].y = +L.at[1].toFixed(2); }
+    save(); drawEdit(); updateUI(); return;
+  }
+  const step = play.steps[cur];
+  const S = stateAt(play, cur), E = applyStep(clone(S), step);
+  if (mode === 'setup') {
+    if (L.type === 'setup') {
+      if (L.moved) play.init.pos[L.id] = L.at.map(v => +v.toFixed(2));
+      else { play.init.holder = L.id; toast(`${label(L.id)}にボールを渡しました`); }
+    } else if (L.type === 'ball') {
+      const t = nearestPlayer(L.at, null, withAutoDef(clone(E.pos), E.holder, ballXY(E)));
+      if (t) play.init.holder = t;
+    }
+    save(); drawEdit(); return;
+  }
+  if (L.type === 'path') {
+    // 指のタップは少しずれるので、短い時間でほとんど動いていなければ「タップ」とみなす
+    const moved = Math.max(...L.pts.map(p => dist(p, L.pts[0]))), tapped = performance.now() - L.t0 < 350 && moved < .6;
+    if (L.pts.length < 2 || tapped) { tapPlayer(L.id, E.holder); return; }
+    const pts = steady(L.pts);
+    const prev = step.moves.find(m => m.pts && m.id === L.id);
+    if (prev) { const off = last(prev.pts)[2]; prev.pts.push(...pts.slice(1).map(p => [p[0], p[1], p[2] + off])); }
+    else step.moves.push({ k: L.kind, id: L.id, pts });
+    if (guideStep === 'trace') showGuide('end');
+  } else if (L.type === 'ball') {
+    const target = nearestPlayer(L.at, L.holder, withAutoDef(clone(E.pos), E.holder, ballXY(E)));
+    const nb = nearBasket(L.at);
+    if (target) step.moves.push({ k: 'pass', from: L.holder, to: target });
+    else if (L.holder && dist(L.at, nb) < 3) step.moves.push({ k: 'shot', from: L.holder });
+    else { toast('味方の近くで離すとパス、ゴールの近くで離すとシュートになります'); drawEdit(); return; }
+    nextStep(target ? `${label(target)}へパス。次のステップです` : 'シュート。次のステップです');
+    return;
+  }
+  save(); drawEdit(); updateUI();
+};
+// パス・シュートでこのステップは終わり。次のステップへ
+function nextStep(msg) {
+  if (cur === play.steps.length - 1) play.steps.push({ moves: [] });
+  cur++;
+  toast(msg);
+  save(); drawEdit(); updateUI();
+}
+// 録画中に選手をダブルタップ：ボールを持っている選手から、その選手へパス
+let lastTap = null;
+function tapPlayer(id, holder) {
+  const now = performance.now(), dbl = lastTap && lastTap.id === id && now - lastTap.t < 500;
+  lastTap = dbl ? null : { id, t: now };
+  if (!dbl) { drawEdit(); return; }
+  if (!holder) { toast('ボールを持っている選手がいません'); drawEdit(); return; }
+  if (holder === id) { toast(`${label(id)}がボールを持っています。受ける選手をダブルタップするとパスです`); drawEdit(); return; }
+  play.steps[cur].moves.push({ k: 'pass', from: holder, to: id });
+  nextStep(`${label(id)}へパス。次のステップです`);
+}
+svg.addEventListener('pointerup', endDrag);
+svg.addEventListener('pointercancel', endDrag);
+// 名前の表示：攻めは「4番」、守りは「X4」
+const label = id => id[0] === 'x' ? 'X' + id[1] : numOf(id) + '番' + (nameOf(id) ? `（${nameOf(id)}）` : '');
+// パスの受け手：攻め・守りどちらでも（守りを表示しているとき）
+function nearestPlayer(p, except, pos) {
+  let best = null, bd = 1.6;
+  for (const id of shownIds()) { if (id === except) continue; const d = dist(p, pos[id]); if (d < bd) { bd = d; best = id; } }
+  return best;
+}
+
+// ===== ボタン =====
+// ===== 再生中のペン（コーチの書き込み） =====
+// 作戦には保存しない、その場だけの書き込み。位置は書き込み層の大きさに対する割合（0〜1）で覚える
+const ink = { on: false, color: '#ff3b6b', erase: false, erasing: false, strokes: [], cur: null };
+function drawInk() {
+  const path = (s, w, c) => `<path d="M${s.pts.map(p => p[0].toFixed(4) + ' ' + p[1].toFixed(4)).join(' L')}" fill="none" stroke="${c}" stroke-width="${w}" stroke-linecap="round" stroke-linejoin="round" vector-effect="non-scaling-stroke"/>`;
+  // 白い背景でも黄色・白が見えるよう、下に薄い黒のふちを付ける
+  $('ink').innerHTML = [...ink.strokes, ...(ink.cur ? [ink.cur] : [])].map(s => path(s, 8, 'rgba(0,0,0,.35)') + path(s, 5, s.c)).join('');
+}
+const markInkTools = () => document.querySelectorAll('[data-ink]').forEach(b => b.classList.toggle('on', ink.erase ? b.dataset.ink === 'erase' : b.dataset.ink === ink.color));
+// 書き込み層をコートの上にぴったり重ねる（コートの外のボタンはペンを使っていても押せる）
+function fitInk() {
+  const el = $('ink'), b = svg.getBoundingClientRect(), now = el.getBoundingClientRect();
+  // 今の位置とのずれだけ動かす（どの要素を基準に置かれていても、画面上でコートに重なる）
+  el.style.left = (parseFloat(el.style.left || 0) + b.left - now.left) + 'px';
+  el.style.top = (parseFloat(el.style.top || 0) + b.top - now.top) + 'px';
+  el.style.width = b.width + 'px'; el.style.height = b.height + 'px';
+}
+// ペンの色の段が出たり消えたりするとコートの場所が動くので、コートのまわりの大きさが変わるたびに合わせ直す
+// （書いた線はコートに対する割合で覚えているので、コートと一緒に動く）
+new ResizeObserver(() => { if (ink.on || ink.strokes.length) fitInk(); }).observe(document.querySelector('.stage'));
+function setPen(on) {
+  ink.on = on; ink.erase = false;
+  $('ink').classList.toggle('active', on); $('penTools').hidden = !on; $('penBtn').classList.toggle('on', on);
+  markInkTools();
+  if (on || ink.strokes.length) fitInk();
+}
+function clearInk() { ink.strokes = []; ink.cur = null; drawInk(); }
+$('penBtn').onclick = () => setPen(!ink.on);
+document.querySelectorAll('[data-ink]').forEach(b => b.onclick = () => {
+  if (b.dataset.ink === 'erase') ink.erase = !ink.erase; else { ink.color = b.dataset.ink; ink.erase = false; }
+  markInkTools();
+});
+$('inkClear').onclick = clearInk;
+const inkAt = e => { const r = $('ink').getBoundingClientRect(); return [(e.clientX - r.left) / r.width, (e.clientY - r.top) / r.height]; };
+function inkEraseAt(p) {   // 指の近く（約24px以内）を通っている線を消す
+  const r = $('ink').getBoundingClientRect();
+  const i = ink.strokes.findIndex(s => s.pts.some(q => Math.hypot((q[0] - p[0]) * r.width, (q[1] - p[1]) * r.height) < 24));
+  if (i >= 0) { ink.strokes.splice(i, 1); drawInk(); }
+}
+$('ink').addEventListener('pointerdown', e => {
+  if (!ink.on) return;
+  if (!ink.strokes.length) fitInk();   // 何も書いていなければ、今のコートの位置に合わせ直す
+  e.preventDefault(); $('ink').setPointerCapture(e.pointerId);
+  const p = inkAt(e);
+  if (ink.erase) { ink.erasing = true; inkEraseAt(p); return; }
+  ink.cur = { c: ink.color, pts: [p, p] }; drawInk();   // 点を2つ入れて、タップだけでも点が残るように
+});
+$('ink').addEventListener('pointermove', e => {
+  if (ink.erasing) { inkEraseAt(inkAt(e)); return; }
+  if (ink.cur) { ink.cur.pts.push(inkAt(e)); drawInk(); }
+});
+const inkEnd = () => { ink.erasing = false; if (!ink.cur) return; ink.strokes.push(ink.cur); ink.cur = null; drawInk(); };
+$('ink').addEventListener('pointerup', inkEnd);
+$('ink').addEventListener('pointercancel', inkEnd);
+
+function setMode(m) {
+  stopPlay(); mode = m;
+  setPen(false); clearInk();   // 書き込みは再生画面のその場だけ
+  tool = 'move';               // 配置の「書き込み」「消す」も、モードを変えたら終わり
+  if ((guideStep === 'trace' || guideStep === 'end') && m !== 'rec') hideGuide(false);   // ガイドの途中でほかのモードへ行ったら、いったん閉じる
+  if (m === 'rec' && cur >= play.steps.length) cur = play.steps.length - 1;
+  updateUI(); m === 'play' ? drawPlayIdle() : drawEdit();
+}
+document.querySelectorAll('[data-mode]').forEach(b => b.addEventListener('click', () => setMode(b.dataset.mode)));
+const setCourt = c => { if (play.court === c) return; play.court = c; save(); applyBoard(); };
+$('c-half').onclick = () => setCourt('half');
+$('c-full').onclick = () => setCourt('full');
+$('defBtn').onclick = () => {
+  play.showDef = !play.showDef;
+  // 人数で守りを0人にしていたときは、出すときに5人そろえる
+  if (play.showDef && play.use && !play.use.some(id => id[0] === 'x')) play.use = [...play.use, ...DEF];
+  save(); updateUI(); drawEdit();
+};
+// 「表示」：平面・立体、ハーフ・オール、向き、背景をまとめた段を開く・閉じる
+$('viewBtn').onclick = () => {
+  const open = $('viewPanel').hidden;
+  $('viewPanel').hidden = !open; $('viewBtn').classList.toggle('on', open); $('viewBtn').setAttribute('aria-expanded', open);
+};
+// 道具の切り替え
+// ペン・消すは押すたびに ON/OFF（OFF のときは選手や道具をドラッグで動かせる）
+document.querySelectorAll('[data-tool]').forEach(b => b.onclick = () => { tool = tool === b.dataset.tool ? 'move' : b.dataset.tool; updateUI(false); drawEdit(); });
+// 人数：攻めは1〜5人、守りは0〜5人。出ている選手は 1番から順に
+const countOf = side => side === 'x' && !play.showDef ? 0 : (play.use ? play.use.filter(id => id[0] === side).length : 5);
+document.querySelectorAll('[data-cnt]').forEach(b => b.onclick = () => {
+  if (hasMoves()) { toast('動きを録画した後は人数を変えられません。「動きを全部消す」で戻せます'); return; }
+  const side = b.dataset.cnt[0], d = b.dataset.cnt[1] === '+' ? 1 : -1;
+  let o = countOf('o'), x = countOf('x');
+  if (side === 'o') o = Math.max(1, Math.min(5, o + d)); else x = Math.max(0, Math.min(5, x + d));
+  play.use = [...OFF.slice(0, o), ...DEF.slice(0, x)];
+  play.showDef = x > 0;
+  if (!play.use.includes(play.init.holder)) play.init.holder = 'o1';
+  save(); updateUI(); drawEdit();
+});
+// 守り方：マンツーマン → 2-3 → 1-2-2 → 1-3-1 → 手動 の順に切り替える
+document.querySelectorAll('.dfmode').forEach(b => b.onclick = () => {
+  const M = PBDefense.MODES, i = M.findIndex(m => m.id === defMode()), next = M[(i + 1) % M.length];
+  play.defense = next.id; save();
+  if (PBDefense.isZone(next.id)) toast('ゾーンはミニバス（U12）・U15の公式戦では使えません（JBA マンツーマン基準規則）');
+  else if (next.id === 'manual') toast('手動：守りも自分でなぞって動かします');
+  stopPlay(); updateUI(); mode === 'play' ? drawPlayIdle() : drawEdit();
+});
+// 背景：白 → 木目 → 黒 → 白 …
+$('bgBtn').onclick = () => {
+  const next = !prefs.light ? 'white' : prefs.wood ? 'dark' : 'wood';
+  prefs.wood = next === 'wood';
+  try { localStorage.setItem('pb-floor', prefs.wood ? 'wood' : 'plain'); } catch (e) {}
+  setLight(next !== 'dark');
+};
+function savePrefs() { try { localStorage.setItem('pb-orient', prefs.vertical ? 'v' : 'h'); localStorage.setItem('pb-3d', prefs.threeD ? '1' : '0'); } catch (e) {} }
+$('orientBtn').onclick = () => { prefs.vertical = !prefs.vertical; savePrefs(); applyBoard(); };
+$('v2d').onclick = () => { prefs.threeD = false; savePrefs(); applyBoard(); };
+$('v3d').onclick = () => { prefs.threeD = true; savePrefs(); applyBoard(); };
+$('resetBtn').onclick = () => ask('動きを全部消しますか？', '選手の配置は残り、録画した動きとパスがすべて消えます。', () => { play.steps = [{ moves: [] }]; cur = 0; save(); updateUI(); drawEdit(); });
+// 録画終了：再生モードに移って、録画した動きを最初から1回再生して見せる
+$('recEnd').onclick = () => {
+  if (!hasMoves()) { toast('まだ録画した動きがありません。選手をなぞってください'); return; }
+  const toThree = guideStep === 'end';   // ガイドの途中なら、次は「3Dで見る」の案内
+  cur = 0; setMode('play'); startPlay(false);
+  if (toThree) showGuide('three');
+  toast('録画を終わりました。もう一度見るときは「▶ 再生」');
+};
+// 録画を最初からやり直す：動きだけ全部消して、ステップ1から録り直す（選手の配置・パイロンなどは残る）
+$('redoAll').onclick = () => {
+  if (!hasMoves()) { toast('まだ録画した動きがありません'); return; }
+  ask('最初から録画し直しますか？', '録画した動き・パス・シュートがすべて消えて、ステップ1に戻ります。選手の配置やパイロンなどは残ります。', () => {
+    play.steps = [{ moves: [] }]; cur = 0; save(); updateUI(); drawEdit(); toast('最初からやり直せます。選手をなぞってください');
+  });
+};
+$('prevStep').onclick = () => { if (cur > 0) { cur--; updateUI(); drawEdit(); } };
+$('nextStep').onclick = () => { if (cur < play.steps.length - 1) { cur++; updateUI(); drawEdit(); } };
+$('addStep').onclick = () => {
+  if (!play.steps[cur].moves.length) { toast('このステップはまだ空です'); return; }
+  play.steps.splice(cur + 1, 0, { moves: [] }); cur++; save(); updateUI(); drawEdit();
+};
+// シュート：今ボールを持っている選手が、近いほうのゴールへシュートする（ボールをゴールへなぞるのと同じ）
+const holderNow = () => cur < play.steps.length ? applyStep(clone(stateAt(play, cur)), play.steps[cur]).holder : null;
+$('shotBtn').onclick = () => {
+  const h = holderNow();
+  if (!h) { toast('ボールを持っている選手がいません'); return; }
+  play.steps[cur].moves.push({ k: 'shot', from: h });
+  if (cur === play.steps.length - 1) play.steps.push({ moves: [] });
+  cur++;
+  toast(`${label(h)}がシュート。次のステップです`);
+  save(); drawEdit(); updateUI();
+};
+$('undoBtn').onclick = () => {
+  const st = play.steps[cur];
+  if (st.moves.length) st.moves.pop();
+  else if (cur > 0) { play.steps.splice(cur, 1); cur--; const p = play.steps[cur]; if (p.moves.length && !last(p.moves).pts) p.moves.pop(); }
+  else { toast('これ以上戻せません'); return; }
+  toast('1つ戻しました');
+  save(); updateUI(); drawEdit();
+};
+$('playBtn').onclick = () => anim ? stopPlay() : startPlay(false);
+$('stepPlayBtn').onclick = () => startPlay(true);
+$('loopBtn').onclick = () => {
+  loop = !loop;
+  try { localStorage.setItem('pb-loop', loop ? '1' : '0'); } catch (e) {}
+  toast(loop ? 'くり返し再生：ON（止めるまで最初から何度も再生します）' : 'くり返し再生：OFF');
+  updateUI(false);
+};
+$('speedBtn').onclick = () => { speed = SPEEDS[(SPEEDS.indexOf(speed) + 1) % SPEEDS.length]; updateUI(false); };
+// 3D画面：この画面の上に重ねて開き、今の作戦と自分の番号を渡す（共有された保存前の作戦も見られる）
+$('view3dBtn').onclick = () => {
+  if (guideStep === 'three') hideGuide(true);   // ガイドはここで完了
+  stopPlay();
+  const f = document.createElement('iframe');
+  f.id = 'view3d'; f.src = '3d.html'; f.title = '3Dで見る'; f.allow = 'fullscreen';
+  f.style.cssText = 'position:fixed;inset:0;width:100%;height:100%;border:0;z-index:30;background:#0d1a22';
+  document.body.appendChild(f);
+};
+addEventListener('message', e => {
+  const f = $('view3d'); if (!f || e.source !== f.contentWindow) return;
+  if (e.data === 'pb-3d-ready') f.contentWindow.postMessage({ type: 'pb-3d-play', play: clone(play), selfId, color: teamColor() }, '*');
+  if (e.data === 'pb-3d-close') f.remove();
+});
+// 自分の番号：当てた背番号と呼び名で選べる（作戦を開くたびに作り直す）
+function renderSelf() {
+  $('selfOff').innerHTML = `<span class="cap">自分の<br>番号</span><button data-self="">なし</button>`
+    + OFF.map(o => `<button data-self="${o}">${esc(numOf(o))}${nameOf(o) ? `<small>${esc(nameOf(o))}</small>` : ''}</button>`).join('');
+}
+$('selfDef').innerHTML = `<span class="cap">守り</span>` + DEF.map(o => `<button data-self="${o}">X${o[1]}</button>`).join('');
+['selfOff', 'selfDef'].forEach(k => $(k).addEventListener('click', e => { const b = e.target.closest('[data-self]'); if (!b) return; selfId = b.dataset.self || null; updateUI(false); if (!anim) drawPlayIdle(); }));
+$('playName').addEventListener('input', e => { play.name = e.target.value || '名前なし'; save(); });
+
+function updateUI(full = true) {
+  document.querySelectorAll('[data-mode]').forEach(b => b.classList.toggle('on', b.dataset.mode === mode));
+  $('modeChip').className = 'modechip ' + mode;
+  $('modeChip').hidden = !$('sharedBanner').hidden;   // 上に帯の案内が出ているときは重ねない
+  $('modeChip').textContent = { setup: '1 配置モード', rec: '2 録画中', play: anim ? '3 再生中' : '3 再生モード' }[mode];
+  $('p-setup').hidden = mode !== 'setup'; $('p-rec').hidden = mode !== 'rec'; $('p-play').hidden = mode !== 'play';
+  $('p-tools').hidden = mode !== 'setup'; $('p-playmain').hidden = mode !== 'play'; $('tray').hidden = mode !== 'setup';
+  document.querySelectorAll('[data-tool]').forEach(b => b.classList.toggle('on', b.dataset.tool === tool));
+  $('cntO').textContent = countOf('o'); $('cntX').textContent = countOf('x');
+  $('selfOff').hidden = mode !== 'play'; $('selfDef').hidden = mode !== 'play' || !play.showDef;
+  const used = play.steps.filter(s => s.moves.length).length;
+  $('stepNo').textContent = `ステップ ${cur + 1} / ${play.steps.length}`;
+  $('prevStep').disabled = cur === 0; $('nextStep').disabled = cur >= play.steps.length - 1;
+  $('defBtn').textContent = play.showDef ? 'DFを隠す' : 'DFを表示';
+  $('bgBtn').textContent = `背景：${bgName()}`;
+  $('orientBtn').textContent = prefs.vertical ? '横向きにする' : '縦向きにする';
+  $('v2d').classList.toggle('on', !prefs.threeD); $('v3d').classList.toggle('on', prefs.threeD);
+  $('viewSeg').hidden = mode !== 'play'; $('viewNote').hidden = mode === 'play';
+  $('b3d').classList.toggle('three', view3D());
+  $('c-half').classList.toggle('on', play.court === 'half'); $('c-full').classList.toggle('on', play.court === 'full');
+  $('speedBtn').textContent = `速さ ×${speed}`;
+  $('loopBtn').classList.toggle('on', loop); $('loopBtn').setAttribute('aria-pressed', loop);
+  $('resetBtn').disabled = !hasMoves() || shared;
+  $('shotBtn').disabled = mode !== 'rec' || !holderNow();
+  $('redoAll').disabled = !hasMoves(); $('recEnd').disabled = !hasMoves();
+  $('undoBtn').disabled = cur === 0 && !(play.steps[0] && play.steps[0].moves.length);
+  const dm = PBDefense.MODES.find(m => m.id === defMode());
+  document.querySelectorAll('.dfmode').forEach(b => { b.textContent = `守り方：${dm.name}`; b.hidden = !play.showDef; });
+  $('view3dBtn').disabled = !hasMoves();
+  if (full) renderSelf();
+  document.querySelectorAll('[data-self]').forEach(b => {
+    b.classList.toggle('on', (b.dataset.self || null) === selfId);
+    b.hidden = !!(b.dataset.self && play.use && !play.use.includes(b.dataset.self));   // 出ていない選手の番号は出さない
+  });
+  $('hint').textContent = {
+    setup: {
+      pen: '指でなぞると、コートに線を書けます（もう一度「ペン」を押すと終わります）',
+      erase: 'パイロン・マーカー・ペンの線をタップすると消えます（もう一度「消す」を押すと終わります）',
+    }[tool] || (hasMoves() ? '動きを録画済みなので選手の配置は固定です。左の道具箱からパイロン・マーカーは置けます' : '選手をドラッグで配置。左の道具箱のパイロン・マーカーはコートへドラッグして置きます'),
+    rec: '選手をなぞると動きを記録。ボールを味方へなぞるか、受ける選手をダブルタップするとパス。「シュート」でシュート。選手を長押しすると、その選手の動きだけ消せます',
+    play: anim ? `再生中（${used}ステップ）` : (selfId ? `${label(selfId)}の動きが黄色で光ります` : '再生ボタンで動きを見られます'),
+  }[mode];
+  if (full && document.activeElement !== $('playName')) $('playName').value = play.name;
+}
+function applyBoard() {
+  document.body.classList.toggle('t-light', prefs.light); document.body.classList.toggle('t-dark', !prefs.light);
+  document.body.classList.toggle('t-green', prefs.green);
+  $('defs').innerHTML = defsMarkup();
+  $('court').innerHTML = courtMarkup();
+  $('figDefs').innerHTML = figDefsMarkup();
+  const vb = curVB();
+  svg.setAttribute('viewBox', vb.join(' '));
+  $('world').setAttribute('transform', prefs.vertical ? 'translate(15 0) rotate(90)' : '');
+  $('b3d').style.setProperty('--ar', vb[2] / vb[3]);
+  $('b3d').classList.toggle('three', view3D());
+  updateUI(); mode === 'play' ? drawPlayIdle() : drawEdit();
+}
+function openPlay(p) {
+  stopPlay(); play = p; cur = 0; selfId = null;
+  setPen(false); clearInk();
+  $('backList').hidden = true;   // 作戦一覧から開いたときだけ、あとで出す
+  applyBoard(); save();
+}
+
+// ===== 作戦一覧 =====
+function renderList() {
+  // 保存されない作戦（動きがない・保存ボタンも押していない）は、今開いているもの以外は一覧に出さない
+  const items = Object.values(store).filter(p => (worthSaving(p) || (p === play && !shared))).sort((a, b) => (b.updated || 0) - (a.updated || 0));
+  $('plist').innerHTML = items.map(p => `<div class="pitem${p.id === play.id && !shared ? ' cur' : ''}"><b>${esc(p.name)}</b><small>${p.steps.filter(s => s.moves.length).length} STEP</small>
+    <button data-open="${p.id}">開く</button><button data-rename="${p.id}" aria-label="${esc(p.name)}の名前を変える">名前</button><button data-del="${p.id}" aria-label="${esc(p.name)}を消す">消す</button></div>`).join('') || '<p>まだ作戦がありません</p>';
+  // 見本の作戦集：「使う」で自分の作戦一覧にコピーして開く（名前や動きは自由に直せる）
+  $('plist').innerHTML += `<h3 class="tplhead">見本の作戦集</h3>` + PB_PLAYBOOK.map((p, i) => `<div class="pitem tpl"><div><b>${esc(p.name.replace(/^見本：/, ''))}</b><p>${esc(p.note)}</p></div>
+    <button data-tpl="${i}">使う</button></div>`).join('');
+}
+// 見本の作戦を自分の作戦一覧にコピーして、再生画面で開く（名前や動きは自由に直せる）
+function useTemplate(src, dlg) {
+  const p = clone(src);
+  p.id = Date.now().toString(36); ['note', 'how', 'points', 'cat'].forEach(k => delete p[k]);
+  leaveShared(); store[p.id] = p; openPlay(p); setMode('play'); $(dlg).hidden = true;
+  toast(`「${p.name}」を作戦一覧に追加しました`);
+}
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+$('listBtn').onclick = () => { renderList(); delete $('listDlg').dataset.fromHome; $('listDlg').hidden = false; };
+// コート左上の「← 作戦一覧に戻る」：作戦一覧から開いたときだけ出す
+function showBack() { $('backList').hidden = false; }
+$('backList').onclick = () => { stopPlay(); $('listBtn').click(); };
+
+// ===== 保存・名前の変更 =====
+// 動きはいつも自動で保存されているが、「保存」で名前を決めて、その場ですぐ書き込む
+let nameTarget = null;
+function openNameDlg(p, title) {
+  nameTarget = p; $('saveTitle').textContent = title; $('saveName').value = p.name;
+  $('saveDlg').hidden = false; $('saveName').focus(); $('saveName').select();
+}
+function saveName() {
+  const p = nameTarget, name = $('saveName').value.trim() || '名前なし';
+  p.name = name; p.updated = Date.now();
+  if (p === play && shared) leaveShared();   // 共有で受け取った作戦も、保存すれば自分の一覧に入る
+  store[p.id] = p;
+  clearTimeout(saveTimer);
+  try {
+    p.kept = true;
+    persist();
+    if (p === play) localStorage.setItem('pb-current', p.id);
+    toast(`「${name}」を保存しました`);
+  } catch (e) { toast('保存できませんでした。ブラウザの設定で保存が止められているかもしれません'); }
+  $('saveDlg').hidden = true;
+  if (!$('listDlg').hidden) renderList();
+  updateUI();
+}
+$('saveBtn').onclick = () => openNameDlg(play, '作戦を保存');
+$('saveOk').onclick = saveName;
+$('saveName').addEventListener('keydown', e => { if (e.key === 'Enter') saveName(); });
+$('plist').addEventListener('click', e => {
+  const o = e.target.closest('[data-open]'), d = e.target.closest('[data-del]'), tp = e.target.closest('[data-tpl]'), rn = e.target.closest('[data-rename]');
+  if (rn) openNameDlg(store[rn.dataset.rename], '名前を変える');
+  if (o) { leaveShared(); openPlay(store[o.dataset.open]); $('listDlg').hidden = true; showBack('list'); }
+  if (tp) { useTemplate(PB_PLAYBOOK[tp.dataset.tpl], 'listDlg'); showBack('list'); }
+  if (d) { const p = store[d.dataset.del]; ask(`「${p.name}」を消しますか？`, '消した作戦は元に戻せません。', () => {
+    delete store[p.id]; if (!Object.keys(store).length) { const n = newPlay(); store[n.id] = n; }
+    if (play.id === p.id) openPlay(Object.values(store)[0]);
+    try { persist(); } catch (er) {}
+    renderList(); }); }
+});
+$('newBtn').onclick = () => { leaveShared(); const n = newPlay(); store[n.id] = n; openPlay(n); mode = 'setup'; updateUI(); drawEdit(); $('listDlg').hidden = true; toast('選手を並べたら「録画」へ'); };
+// ポップアップを閉じる。トップ画面から開いたもの（作戦一覧・チーム情報・コードから開く）なら、トップ画面へ戻る
+function closeOverlay(o) {
+  o.hidden = true;
+  if (o.dataset.fromHome) { delete o.dataset.fromHome; showHome(true); }
+}
+document.querySelectorAll('[data-close]').forEach(b => b.addEventListener('click', () => closeOverlay(b.closest('.overlay'))));
+document.querySelectorAll('.overlay').forEach(o => o.addEventListener('click', e => { if (e.target === o) closeOverlay(o); }));
+let confirmCb = null;
+function ask(title, text, cb) { $('confirmTitle').textContent = title; $('confirmText').textContent = text; confirmCb = cb; $('confirmDlg').hidden = false; }
+$('confirmOk').onclick = () => { $('confirmDlg').hidden = true; if (confirmCb) confirmCb(); confirmCb = null; };
+
+// ===== 共有（作戦をリンクに詰める。サーバーは使わない） =====
+const b64u = bytes => { let s = ''; for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode(...bytes.subarray(i, i + 0x8000)); return btoa(s).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, ''); };
+const unb64u = str => { const s = atob(str.replace(/-/g, '+').replace(/_/g, '/')); return Uint8Array.from(s, c => c.charCodeAt(0)); };
+async function encodePlay(p) {
+  const json = JSON.stringify({ n: p.name, c: p.court, f: p.floor, d: p.showDef, df: PBDefense.modeOf(p), u: p.use, l: p.lineup, k: p.kind, it: p.items, mk: p.marks, i: p.init, s: p.steps.filter(s => s.moves.length) });
+  if ('CompressionStream' in window) {
+    const st = new Blob([json]).stream().pipeThrough(new CompressionStream('deflate-raw'));
+    return 'z' + b64u(new Uint8Array(await new Response(st).arrayBuffer()));
+  }
+  return 'j' + b64u(new TextEncoder().encode(json));
+}
+async function decodePlay(code) {
+  code = code.trim().replace(/^.*#p\./, '');
+  let json;
+  if (code[0] === 'z') { const st = new Blob([unb64u(code.slice(1))]).stream().pipeThrough(new DecompressionStream('deflate-raw')); json = await new Response(st).text(); }
+  else json = new TextDecoder().decode(unb64u(code.slice(1)));
+  const o = JSON.parse(json);
+  return { id: Date.now().toString(36), name: o.n, court: o.c, floor: o.f, showDef: o.d, defense: o.df, use: o.u, lineup: o.l, kind: o.k, items: o.it, marks: o.mk, init: o.i, steps: o.s.length ? o.s : [{ moves: [] }] };
+}
+$('shareBtn').onclick = async () => {
+  const code = await encodePlay(play);
+  $('shareCode').value = code;
+  $('shareLink').value = location.href.split('#')[0] + '#p.' + code;
+  delete $('shareDlg').dataset.fromHome;
+  $('shareDlg').hidden = false;
+};
+function copy(input, btn) {
+  const ok = () => { const t = btn.textContent; btn.textContent = 'コピーしました'; setTimeout(() => btn.textContent = t, 1500); };
+  const fb = () => { input.select(); try { document.execCommand('copy'); ok(); } catch (e) { toast('コピーできませんでした。選択して長押しでコピーしてください'); } };
+  try { navigator.clipboard.writeText(input.value).then(ok, fb); } catch (e) { fb(); }
+}
+// ===== バックアップ：保存されている作戦とチーム情報を、まとめて1つのコードにする／コードから戻す =====
+async function packAll() {
+  const json = JSON.stringify({ p: Object.values(store).filter(worthSaving), t: team });
+  const st = new Blob([json]).stream().pipeThrough(new CompressionStream('deflate-raw'));
+  return 'PB2' + b64u(new Uint8Array(await new Response(st).arrayBuffer()));
+}
+async function unpackAll(code) {
+  code = code.replace(/\s+/g, '');
+  if (!/^PB[12]/.test(code)) throw new Error('not backup');
+  const st = new Blob([unb64u(code.slice(3))]).stream().pipeThrough(new DecompressionStream('deflate-raw'));
+  const o = JSON.parse(await new Response(st).text());
+  return code[2] === '1' ? { p: o } : o;   // PB1 は作戦だけ
+}
+$('bkOut').onclick = async () => {
+  const n = Object.values(store).filter(worthSaving).length;
+  $('bkCode').value = await packAll(); $('bkCopy').disabled = false;
+  toast(`${n}件の作戦とチーム情報をコードにしました。「コピー」して自分に送っておきましょう`);
+};
+$('bkCopy').onclick = () => copy($('bkCode'), $('bkCopy'));
+$('bkLoad').onclick = async () => {
+  let list, got;
+  try { got = await unpackAll($('bkIn').value); list = got.p || []; } catch (e) { toast('バックアップのコードを読めませんでした。最後までコピーされているか確かめてください'); return; }
+  let added = 0;
+  for (const p of list) {
+    if (!p || !p.steps) continue;
+    // 同じ作戦がすでにあれば上書きしない。名前は同じでも中身が違えば、別の作戦として足す
+    if (store[p.id] && JSON.stringify(store[p.id]) === JSON.stringify(p)) continue;
+    if (store[p.id]) p.id = Date.now().toString(36) + added;
+    store[p.id] = p; added++;
+  }
+  try { persist(); } catch (e) {}
+  // チーム情報は、このスマホにまだ何も登録していないときだけ読み込む（今のチーム情報は上書きしない）
+  if (got.t && !team.name && !team.roster.length) { Object.assign(team, got.t); saveTeam(); homeTeam(); applyBoard(); }
+  $('bkIn').value = ''; renderList();
+  toast(added ? `${added}件を読み込みました` : '新しく足す作戦はありませんでした（もう入っています）');
+};
+$('copyLink').onclick = () => copy($('shareLink'), $('copyLink'));
+$('copyCode').onclick = () => copy($('shareCode'), $('copyCode'));
+$('importBtn').onclick = async () => {
+  try { const p = await decodePlay($('importCode').value); $('shareDlg').hidden = true; showShared(p); }
+  catch (e) { toast('コードを読めませんでした。最後までコピーされているか確かめてください'); }
+};
+function showShared(p) { shared = true; $('sharedBanner').hidden = false; openPlay(p); setMode('play'); }
+function leaveShared() { shared = false; $('sharedBanner').hidden = true; }
+$('keepBtn').onclick = () => { shared = false; play.updated = Date.now(); store[play.id] = play; save(); leaveShared(); toast('作戦一覧に保存しました'); updateUI(); };
+
+// ===== はじめてのガイド：① なぞる → ② 録画終了 → ③ 3Dで見る =====
+// 最初に作戦を作ったときだけ出す。「ガイドを終わる」か③まで進むと、次からは出さない
+const GUIDE = {
+  trace: { n: 1, text: 'まず、青い選手を指でなぞってみよう。なぞった通りに走ります', target: () => document.querySelector(`#dyn [data-id="${shownIds().find(id => id[0] === 'o') || 'o1'}"]`) },
+  end: { n: 2, text: 'いいですね！ 動きを録り終わったら「■ 録画終了」を押そう', target: () => $('recEnd') },
+  three: { n: 3, text: '最後に「3Dで見る」。選手の目線や、自由に回して見られます', target: () => $('view3dBtn') },
+};
+let guideStep = null;
+const guideDone = () => { try { return localStorage.getItem('pb-guide') === 'done'; } catch (e) { return true; } };
+function showGuide(k) {
+  if (guideDone()) return;
+  guideStep = k; $('gText').textContent = GUIDE[k].text; $('gStep').textContent = `${GUIDE[k].n} / 3`;
+  placeGuide(); setTimeout(placeGuide, 60);   // 画面が並び替わったあとにもう一度合わせる
+}
+function hideGuide(finish) {
+  guideStep = null; $('guide').hidden = true;
+  if (finish) try { localStorage.setItem('pb-guide', 'done'); } catch (e) {}
+}
+function placeGuide() {
+  if (!guideStep) return;
+  const el = GUIDE[guideStep].target(), r = el && el.getBoundingClientRect();
+  if (!r || !r.width) { $('guide').hidden = true; return; }
+  $('guide').hidden = false;
+  const b = $('gBubble'), f = $('gFinger');
+  f.style.left = (r.left + r.width / 2) + 'px'; f.style.top = (r.top + r.height / 2) + 'px';
+  f.classList.toggle('swipe', guideStep === 'trace');
+  const bw = b.offsetWidth, bh = b.offsetHeight;
+  b.style.left = Math.min(innerWidth - bw - 16, Math.max(16, r.left + r.width / 2 - bw / 2)) + 'px';
+  let top = r.top - bh - 20; if (top < 16) top = r.bottom + 56;   // 上に入らなければ下に出す
+  b.style.top = top + 'px';
+}
+addEventListener('resize', placeGuide);
+$('gSkip').onclick = () => hideGuide(true);
+let toastTimer;
+function toast(msg) { const t = $('toast'); t.textContent = msg; t.hidden = false; clearTimeout(toastTimer); toastTimer = setTimeout(() => t.hidden = true, 2600); }
+
+// 保存の時刻（一覧の並び順用）
+const _save = save; save = function () { if (!shared) play.updated = Date.now(); _save(); };
+
+// ===== トップ画面 =====
+function homeMarkup() {
+  // コートは横向き（28m×15m）の座標で描き、全体を90度回して縦向きにする。下側のゴールが手前に来る
+  // 描く順番（秒）：線が落ちる 0〜0.42 → 外枠 → センターサークル → 制限区域 → FTサークル → 3P → ゴール → 3.2秒から奥へ倒れる
+  const lines = cls => {
+    const d = (p, dl, du = .8) => `<path class="hd ${cls}" pathLength="1" style="--dl:${dl}s;--du:${du}s" d="${p}"/>`;
+    const side = `
+      ${d('M0 5.05 H5.8 V9.95 H0', 1.65, .6)}
+      ${d('M5.8 5.7 A1.8 1.8 0 0 1 5.8 9.3', 1.95, .5)}
+      ${d('M0 0.9 H2.989 A6.75 6.75 0 0 1 8.325 7.5', 2.15, .75)}
+      ${d('M0 14.1 H2.989 A6.75 6.75 0 0 0 8.325 7.5', 2.15, .75)}
+      ${d('M1.2 6.25 H1.575 A1.25 1.25 0 0 1 1.575 8.75 H1.2', 2.65, .35)}
+      <g class="h-pop" style="--dl:2.85s"><line class="${cls}" x1="1.2" y1="6.6" x2="1.2" y2="8.4"/><circle class="${cls}" cx="1.575" cy="7.5" r=".225"/></g>`;
+    return `<line class="h-drop ${cls}" x1="14" y1="0" x2="14" y2="15"/>
+      ${d('M14 0 H0 V7.5', .6, .95)}${d('M14 15 H0 V7.5', .6, .95)}${d('M14 0 H28 V7.5', .6, .95)}${d('M14 15 H28 V7.5', .6, .95)}
+      ${d('M14 5.7 A1.8 1.8 0 0 0 14 9.3', 1.25, .55)}${d('M14 5.7 A1.8 1.8 0 0 1 14 9.3', 1.25, .55)}
+      <g>${side}</g><g transform="matrix(-1,0,0,1,28,0)">${side}</g>`;
+  };
+  const paint = `<rect x="0" y="5.05" width="5.8" height="4.9"/>`;
+  const pl = [[17.4, 7.5, 1], [20.2, 2.4, 2], [20.2, 12.6, 3], [25.8, 1.6, 4], [25.8, 13.4, 5]];
+  const player = ([x, y, n], i) => `<g class="h-pl" style="--dl:${(4.45 + i * .07).toFixed(2)}s"><circle class="n-pl" cx="${x}" cy="${y}" r=".52" stroke-width=".09"/><text class="n-txt" x="${x}" y="${y}" transform="rotate(-90 ${x} ${y})" dy=".22" font-size=".62" text-anchor="middle" font-family="Barlow Condensed, Arial" font-weight="700">${n}</text></g>`;
+  return `
+    <defs>
+      <pattern id="hGrid" width="1" height="1" patternUnits="userSpaceOnUse"><path class="n-grid" d="M1 0 H0 V1"/></pattern>
+      <filter id="sGlow" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation=".18"/></filter>
+    </defs>
+    <g transform="translate(15 0) rotate(90)">
+      <g class="h-floor">
+        <rect class="n-floor" x="-1" y="-1" width="30" height="17"/>
+        <rect x="-1" y="-1" width="30" height="17" fill="url(#hGrid)"/>
+        <g class="n-paint">${paint}<g transform="matrix(-1,0,0,1,28,0)">${paint}</g></g>
+      </g>
+      <g fill="none" stroke-width=".4" stroke-linecap="round">${lines('n-glow')}</g>
+      <g fill="none" stroke-width=".1" stroke-linecap="round">${lines('n-core')}</g>
+      <!-- 作戦シーン：1番がゴールへ走った跡（光る線）・パスの点線・決まった瞬間のリングの光 -->
+      <path id="sCutGlow" class="s-trailglow" pathLength="1" d="${CUT}" fill="none" stroke-width=".55" stroke-linecap="round" filter="url(#sGlow)" stroke-dasharray="1 1.1" stroke-dashoffset="1"/>
+      <path id="sCut" class="s-trail" pathLength="1" d="${CUT}" fill="none" stroke-width=".14" stroke-linecap="round" stroke-dasharray="1 1.1" stroke-dashoffset="1"/>
+      <path id="sPass1" class="s-trail" d="" fill="none" stroke-width=".08" stroke-dasharray=".3 .22" opacity="0"/>
+      <path id="sPass2" class="s-trail" d="" fill="none" stroke-width=".08" stroke-dasharray=".3 .22" opacity="0"/>
+      <circle id="sFlash" cx="26.425" cy="7.5" r=".6" fill="var(--neon2)" opacity="0" filter="url(#sGlow)"/>
+      <circle id="sRipple" class="s-ring" cx="26.425" cy="7.5" r=".3" stroke-width=".12" opacity="0"/>
+      <g id="sSparks"></g>
+      ${pl.slice(1).map((p, i) => player(p, i + 1)).join('')}
+      <g id="sO1">${player(pl[0], 0)}</g>
+      <path id="sTail" class="s-tail" d="" fill="none" stroke-width=".3" stroke-linecap="round" opacity=".55" filter="url(#sGlow)"/>
+      <g class="h-pl" style="--dl:4.8s"><g id="sBall"><circle r=".28" fill="var(--ball)"/><path d="M-.28 0 H.28 M0 -.28 V.28" stroke="#5a2508" stroke-width=".04"/></g></g>
+    </g>`;
+}
+// ===== トップ画面の作戦シーン（4.9〜7.5秒）：1番→2番へパス、1番がゴールへカット、リターンパス、シュートが決まる =====
+// 時間 t（秒）を決めると、そのときの形を描く（スキップや戻ってきたときは t を大きくして最後の形）
+const CUT = 'M17.4 7.5 C 19.4 6.3, 21.6 6.4, 23.4 7.0 S 24.6 7.4, 24.9 7.4';
+const SO1 = [17.4, 7.5], SO2 = [20.2, 2.4], SRING = [26.425, 7.5];
+const SC = { pass1: [4.95, 5.45], cut: [5.3, 6.3], pass2: [6.3, 6.75], shot: [6.75, 7.45] };
+const sClamp = (v, a = 0, b = 1) => Math.min(b, Math.max(a, v));
+const sProg = (t, a, b) => sClamp((t - a) / (b - a));
+const sEase = k => k < .5 ? 2 * k * k : 1 - Math.pow(-2 * k + 2, 2) / 2;
+const sLerp = (a, b, k) => [a[0] + (b[0] - a[0]) * k, a[1] + (b[1] - a[1]) * k];
+const sHand = p => [p[0], p[1] - .62];   // 手元（画面では選手の右）にボールを持つ
+let sCutLen = 0;
+function sO1At(t) { const q = $('sCut').getPointAtLength(sCutLen * sEase(sProg(t, ...SC.cut))); return [q.x, q.y]; }
+function sBallAt(t) {   // ボールの位置と高さ（高さはシュートの弧。上から見た絵なので大きさで表す）
+  const o1 = sO1At(t);
+  if (t < SC.pass1[0]) return { p: sHand(SO1), h: 0 };
+  if (t < SC.pass1[1]) return { p: sLerp(sHand(SO1), sHand(SO2), sEase(sProg(t, ...SC.pass1))), h: 0 };
+  if (t < SC.pass2[0]) return { p: sHand(SO2), h: 0 };
+  if (t < SC.pass2[1]) return { p: sLerp(sHand(SO2), sHand(o1), sEase(sProg(t, ...SC.pass2))), h: 0 };
+  if (t < SC.shot[1]) { const k = sProg(t, ...SC.shot); return { p: sLerp(sHand(o1), SRING, k), h: Math.sin(Math.PI * k) }; }
+  return { p: sLerp(SRING, [25.6, 7.5], sEase(sProg(t, SC.shot[1], SC.shot[1] + .5))), h: 0 };   // ネットをくぐってゴール下へ
+}
+const SPARKS = Array.from({ length: 12 }, (_, i) => { const a = i / 12 * Math.PI * 2 + .2; return [Math.cos(a), Math.sin(a), .8 + (i % 3) * .35]; });
+function homeScene(t) {
+  const o1 = sO1At(t), c = sEase(sProg(t, ...SC.cut));
+  $('sO1').setAttribute('transform', `translate(${o1[0] - SO1[0]} ${o1[1] - SO1[1]})`);
+  $('sCut').setAttribute('stroke-dashoffset', 1 - c); $('sCutGlow').setAttribute('stroke-dashoffset', 1 - c);
+  const passLine = (id, a, b, k) => { $(id).setAttribute('d', `M${a[0]} ${a[1]} L${sLerp(a, b, k).join(' ')}`); $(id).setAttribute('opacity', k > 0 ? .8 : 0); };
+  passLine('sPass1', sHand(SO1), sHand(SO2), sEase(sProg(t, ...SC.pass1)));
+  passLine('sPass2', sHand(SO2), sHand(sO1At(SC.pass2[1])), sEase(sProg(t, ...SC.pass2)));
+  const b = sBallAt(t);
+  $('sBall').setAttribute('transform', `translate(${b.p[0]} ${b.p[1]}) scale(${1 + b.h * 1.3})`);
+  const flying = (t > SC.pass1[0] && t < SC.pass1[1]) || (t > SC.pass2[0] && t < SC.pass2[1]) || (t > SC.shot[0] && t < SC.shot[1]);
+  $('sTail').setAttribute('d', flying ? 'M' + [0, .03, .06, .09, .12].map(dt => sBallAt(t - dt).p.join(' ')).join(' L') : '');
+  const g = sProg(t, SC.shot[1], SC.shot[1] + .7), hit = t >= SC.shot[1];
+  $('sFlash').setAttribute('opacity', hit ? (1 - g) * .9 : 0);
+  $('sRipple').setAttribute('r', .3 + sEase(g) * 3); $('sRipple').setAttribute('opacity', hit ? (1 - g) * .9 : 0);
+  $('sSparks').innerHTML = hit && g < 1 ? SPARKS.map(([dx, dy, s]) => {
+    const r1 = .4 + sEase(g) * s * 1.6, r2 = r1 + .35 * (1 - g);
+    return `<line class="s-spark" x1="${SRING[0] + dx * r1}" y1="${SRING[1] + dy * r1}" x2="${SRING[0] + dx * r2}" y2="${SRING[1] + dy * r2}" stroke-width=".09" stroke-linecap="round" opacity="${1 - g}"/>`;
+  }).join('') : '';
+}
+let homeT0 = 0, homeRaf = 0;
+const homeReduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+function homeLoop(now) {
+  const t = homeReduced || home.classList.contains('skip') ? 99 : (now - homeT0) / 1000;
+  homeScene(t);
+  homeRaf = t < 9 && !home.hidden ? requestAnimationFrame(homeLoop) : 0;
+}
+function startHomeScene(instant) {
+  cancelAnimationFrame(homeRaf);
+  if (instant) { homeScene(99); return; }
+  homeT0 = performance.now(); homeScene(0); homeRaf = requestAnimationFrame(homeLoop);
+}
+const home = $('home');
+$('homeSvg').innerHTML = homeMarkup();
+sCutLen = $('sCut').getTotalLength();
+function showHome(instant) {
+  stopPlay();
+  home.hidden = false; hideGuide(false);
+  home.classList.remove('run', 'skip', 'done');
+  void home.offsetWidth;          // もう一度最初から動かす
+  home.classList.add(instant ? 'done' : 'run');   // 戻ってきたときはアニメーションなしで、できあがった画面をすぐ出す
+  startHomeScene(instant);
+}
+function hideHome() { home.hidden = true; }
+$('homeBtn').onclick = () => showHome(true);   // 作戦ボードから戻るときは、アニメーションなしですぐ出す
+const skipHome = () => { home.classList.add('skip'); startHomeScene(true); };
+$('h-skip').onclick = skipHome;
+// 色の設定はトップ画面と作戦ボードで共通
+function setNeon(g) {
+  prefs.green = g; home.classList.toggle('green', g);
+  try { localStorage.setItem('pb-neon', g ? 'green' : 'blue'); } catch (e) {}
+  if (play) applyBoard();
+}
+function setLight(l) {
+  prefs.light = l; home.classList.toggle('light', l); $('h-bg').textContent = `背景：${l ? '白' : '黒'}`;
+  try { localStorage.setItem('pb-bg', l ? 'light' : 'dark'); } catch (e) {}
+  if (play) applyBoard();
+}
+$('h-bg').onclick = () => setLight(!prefs.light);
+setNeon(false); setLight(prefs.light);   // 線の色は青だけ（緑は廃止）
+$('homeStage').addEventListener('click', skipHome);
+$('h-new').onclick = () => { hideHome(); $('newBtn').click(); if (!guideDone()) { setMode('rec'); showGuide('trace'); } };   // はじめてなら録画から案内する
+$('h-list').onclick = () => { hideHome(); $('listBtn').click(); $('listDlg').dataset.fromHome = 1; };
+$('h-sample').onclick = () => {
+  hideHome(); leaveShared();
+  if (!store.sample) { const s = samplePlay(); store.sample = s; }
+  openPlay(store.sample); setMode('play'); startPlay(false);
+};
+$('h-team').onclick = () => { hideHome(); openTeam(true); };
+// ===== チーム情報の画面：入力するとすぐ保存して、コートにも反映する =====
+function homeTeam() { const t = [team.name, team.cat].filter(Boolean).join('　'); $('hTeam').textContent = t; $('hTeam').hidden = !t; }
+function teamChanged() { saveTeam(); homeTeam(); applyBoard(); }
+function renderTeam() {
+  $('tName').value = team.name;
+  $('tCat').innerHTML = CATS.map(c => `<option value="${c}">${c || '選ばない'}</option>`).join(''); $('tCat').value = team.cat;
+  $('tColors').innerHTML = TEAM_COLORS.map(t => `<button data-color="${t.c}" class="${t.c === team.color ? 'on' : ''}" style="--c:${t.c || '#0a8fd6'}"><i></i>${t.name}</button>`).join('');
+  renderRoster();
+}
+function renderRoster() {
+  $('roster').innerHTML = team.roster.map((r, i) => `<div class="rrow"><input class="no" data-i="${i}" data-f="no" inputmode="numeric" maxlength="3" value="${esc(r.no)}" aria-label="背番号">`
+    + `<input class="nm" data-i="${i}" data-f="name" maxlength="12" value="${esc(r.name)}" placeholder="呼び名" aria-label="呼び名"><button data-rm="${i}" aria-label="この選手を名簿から外す">×</button></div>`).join('')
+    || '<p>まだ選手がいません。「＋ 選手を追加」で登録します。</p>';
+}
+function openTeam(fromHome) {
+  renderTeam();
+  const dlg = $('teamDlg');
+  if (fromHome) dlg.dataset.fromHome = 1; else delete dlg.dataset.fromHome;
+  dlg.hidden = false; dlg.querySelector('.sheet').scrollTop = 0;
+}
+$('tName').addEventListener('input', e => { team.name = e.target.value.trim(); teamChanged(); });
+$('tCat').addEventListener('change', e => { team.cat = e.target.value; teamChanged(); });
+$('tColors').addEventListener('click', e => { const b = e.target.closest('[data-color]'); if (!b) return; team.color = b.dataset.color; teamChanged(); renderTeam(); });
+$('roster').addEventListener('input', e => { const f = e.target.dataset.f; if (!f) return; team.roster[e.target.dataset.i][f] = e.target.value.trim(); teamChanged(); });
+$('roster').addEventListener('click', e => { const b = e.target.closest('[data-rm]'); if (!b) return; team.roster.splice(+b.dataset.rm, 1); teamChanged(); renderRoster(); });
+$('addPlayer').onclick = () => {
+  if (team.roster.length >= 20) { toast('選手は20人まで登録できます'); return; }
+  const used = new Set(team.roster.map(r => r.no)); let n = 4; while (used.has(String(n))) n++;   // 空いている背番号を4番から順に
+  team.roster.push({ no: String(n), name: '' }); teamChanged(); renderRoster();
+  $('roster').querySelector(`[data-i="${team.roster.length - 1}"][data-f="name"]`).focus();
+};
+// ===== 選手を当てる：作戦の1〜5の位置に、名簿の背番号を当てはめる =====
+function renderLineup() {
+  const ids = OFF.filter(id => shownIds().includes(id)), list = team.roster.filter(r => r.no);
+  if (!list.length) { $('lineup').innerHTML = '<p>まだ名簿に選手がいません。「チーム情報を開く」から、背番号と呼び名を登録してください。</p>'; return; }
+  $('lineup').innerHTML = ids.map(id => `<div class="lrow"><b>${id[1]}の位置</b><select data-pos="${id}" aria-label="${id[1]}の位置の選手"><option value="">当てない（${id[1]}のまま）</option>`
+    + list.map(r => `<option value="${esc(r.no)}">${esc(r.no)}番　${esc(r.name)}</option>`).join('') + '</select></div>').join('');
+  ids.forEach(id => { $('lineup').querySelector(`[data-pos="${id}"]`).value = (play.lineup && play.lineup[id]) || ''; });
+}
+$('lineup').addEventListener('change', e => {
+  const id = e.target.dataset.pos; if (!id) return;
+  const no = e.target.value; play.lineup = { ...(play.lineup || {}) };
+  if (no) for (const k in play.lineup) if (k !== id && play.lineup[k] === no) delete play.lineup[k];   // 同じ選手は1つの位置だけ
+  if (no) play.lineup[id] = no; else delete play.lineup[id];
+  save(); renderLineup(); updateUI(); mode === 'play' ? drawPlayIdle() : drawEdit();
+});
+$('lineupBtn').onclick = () => { renderLineup(); $('lineupDlg').hidden = false; };
+$('toTeam').onclick = () => { $('lineupDlg').hidden = true; openTeam(false); };
+// ===== 使い方の図：アプリと同じ描き方で、小さなコートの絵を作る =====
+let figSeq = 0;
+function helpFigures() {
+  const VB = '15.2 -0.6 13.4 16.2';
+  const base = { o1: [17.4, 7.5], o2: [20.2, 2.4], o3: [20.2, 12.6], o4: [25.8, 1.6], o5: [25.8, 13.4] };
+  const bo = p => [p[0] + BOFF, p[1] - BOFF];
+  const piece = (F, id, p, hi, op = 1) => {
+    const off = id[0] === 'o';
+    return `<g transform="translate(${p[0]} ${p[1]})" opacity="${op}">${hi ? `<circle r=".86" fill="none" stroke="${HI}" stroke-width=".16"/>` : ''}<circle r="${off ? .62 : .56}" fill="${off ? F.off : F.def}" stroke="#fff" stroke-width=".07"/><text y="${off ? .26 : .19}" font-size="${off ? .74 : .54}" text-anchor="middle" fill="${off ? F.offText : '#fff'}" font-family="Barlow Condensed, Arial" font-weight="700">${off ? id[1] : 'X' + id[1]}</text></g>`;
+  };
+  const all = (F, pos, hi) => Object.keys(pos).map(k => piece(F, k, pos[k], k === hi, hi && k !== hi ? .45 : 1)).join('');
+  const finger = p => `<g transform="translate(${p[0]} ${p[1]})"><circle r=".8" fill="${HI}" opacity=".35"/><circle r=".32" fill="${HI}" stroke="#7a5d00" stroke-width=".06"/></g>`;
+  // 図ごとに模様の名前を変えて、本物のコートやほかの図と混ざらないようにする
+  const svgOf = (inner, vb = VB) => { const n = ++figSeq; return `<svg viewBox="${vb}" xmlns="http://www.w3.org/2000/svg">${courtMarkup().replace(/(gridP|floorG|woodP)/g, `$1_${n}`)}${inner}</svg>`; };
+  const withBg = (light, wood, fn) => { const keep = [prefs.light, prefs.wood]; prefs.light = light; prefs.wood = wood; try { return fn(TH()); } finally { [prefs.light, prefs.wood] = keep; } };
+  const bgFig = (light, wood) => withBg(light, wood, F => svgOf(all(F, base) + ballMarkup(bo(base.o1))));
+  const F = TH();
+  const figs = {
+    screen: () => svgOf(all(F, base) + ballMarkup(bo(base.o1))),
+    setup: () => svgOf(`<circle cx="20.2" cy="2.4" r=".56" fill="none" stroke="${F.ink}" stroke-width=".06" stroke-dasharray=".12 .1" opacity=".6"/><path d="M20.2 2.4 L21.8 4.8" stroke="${F.ink}" stroke-width=".07" stroke-dasharray=".2 .15" fill="none"/>`
+      + all(F, { ...base, o2: [21.8, 4.8] }) + ballMarkup(bo(base.o1)) + finger([21.8, 4.8])),
+    run: () => { const pts = [[20.2, 12.6], [22, 11.2], [24.6, 8.6]]; return svgOf(movesMarkup([{ k: 'run', id: 'o3', pts }], { o3: last(pts) }, null) + all(F, base) + ballMarkup(bo(base.o1)) + finger(last(pts))); },
+    dribble: () => { const pts = [[17.4, 7.5], [19.8, 9.2], [22.8, 9.4]]; return svgOf(movesMarkup([{ k: 'dribble', id: 'o1', pts }], { o1: last(pts) }, null) + all(F, base) + ballMarkup(bo(base.o1)) + finger(last(pts))); },
+    pass: () => svgOf(movesMarkup([{ k: 'pass', from: 'o1', to: 'o2' }], base, bo(base.o1)) + all(F, base) + ballMarkup(bo(base.o1)) + finger(base.o2)),
+    shot: () => { const pos = { ...base, o1: [21.6, 6.2] }; return svgOf(movesMarkup([{ k: 'shot', from: 'o1' }], pos, null) + all(F, pos) + ballMarkup(bo(pos.o1))); },
+    self: () => {
+      const pos = { ...base, o4: [24.6, 3.4] }, end = { ...pos, o1: [24.6, 7.1], o3: [18.2, 8.6] };
+      const moves = [{ k: 'run', id: 'o1', pts: [[17.4, 7.5], [19.6, 6.6], [24.6, 7.1]] }, { k: 'run', id: 'o3', pts: [[20.2, 12.6], [18.2, 8.6]] }, { k: 'pass', from: 'o2', to: 'o1' }];
+      return svgOf(movesMarkup(moves, end, bo(pos.o2), { self: 'o1' }) + all(F, pos, 'o1') + ballMarkup(bo(pos.o2)));
+    },
+    man: () => svgOf(all(F, { ...base, ...PBDefense.at('man', base, base.o1, 'o1') }) + ballMarkup(bo(base.o1))),
+    zone: () => svgOf(all(F, { ...base, ...PBDefense.at('z23', base, base.o1, 'o1') }) + ballMarkup(bo(base.o1))),
+    tools: () => {
+      const pos = { o1: [17.4, 4], o2: [17.4, 11] }, items = [[20.5, 4.5], [22.5, 7.5], [20.5, 10.5]].map(p => `<g transform="translate(${p[0]} ${p[1]})">${CONE}</g>`).join('')
+        + [[24.6, 5.2], [24.6, 9.8]].map(p => `<g transform="translate(${p[0]} ${p[1]})">${MARKER}</g>`).join('');
+      const pen = `<path d="M18.2 4.4 Q20.6 6.6 22.6 7.3 Q24.2 7.8 24.6 9.2" fill="none" stroke="${PEN}" stroke-width=".14" stroke-linecap="round" opacity=".85"/><circle cx="25.6" cy="7.5" r="1.3" fill="none" stroke="${PEN}" stroke-width=".12" opacity=".85"/>`;
+      return svgOf(pen + items + all(F, pos) + ballMarkup(bo(pos.o1)));
+    },
+    'bg-white': () => bgFig(true, false),
+    'bg-wood': () => bgFig(true, true),
+    'bg-dark': () => bgFig(false, false),
+  };
+  document.querySelectorAll('#helpDlg .hfig').forEach(el => { const fn = figs[el.dataset.fig]; if (fn) el.innerHTML = fn(); });
+}
+// 使い方：トップ画面からも、作戦ボードの右上の「？」からも開ける
+function openHelp(fromHome) {
+  helpFigures();
+  const dlg = $('helpDlg');
+  if (fromHome) dlg.dataset.fromHome = 1; else delete dlg.dataset.fromHome;
+  dlg.hidden = false; dlg.querySelector('.sheet').scrollTop = 0;
+}
+$('h-help').onclick = () => { hideHome(); openHelp(true); };
+$('helpBtn').onclick = () => { stopPlay(); openHelp(false); };
+$('h-code').onclick = async () => { hideHome(); await $('shareBtn').onclick(); $('shareDlg').dataset.fromHome = 1; $('importCode').focus(); };
+
+// ===== 起動 =====
+(async () => {
+  loadStore(); homeTeam();
+  const h = location.hash;
+  if (h.startsWith('#p.')) {
+    try { showShared(await decodePlay(h)); return; } catch (e) { toast('共有リンクを読めませんでした'); }
+  }
+  applyBoard();
+  setMode(hasMoves() ? 'play' : 'rec');
+  showHome();
+  // 「#help」で開いたときは、使い方をすぐ出す（使い方へのリンクを送れるように）。全部の項目を開いておく
+  if (h === '#help') { showHome(true); openHelp(true); $('helpDlg').querySelectorAll('details').forEach(x => x.open = true); }
+})();
+</script>

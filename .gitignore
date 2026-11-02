@@ -1,0 +1,8 @@
+# 公開するファイルだけを GitHub に上げる（メモや試作は上げない）
+*
+!.gitignore
+!index.html
+!3d.html
+!defense.js
+!playbook.js
+!deploy.bat
