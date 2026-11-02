@@ -682,7 +682,8 @@ const OFF = ['o1', 'o2', 'o3', 'o4', 'o5'], DEF = ['x1', 'x2', 'x3', 'x4', 'x5']
 // 背景は 白・木目・黒 の3つ。木目は明るい画面（light）の上で、床だけ木の板にする
 const prefs = { light: true, wood: false, green: false, vertical: false, threeD: false };
 try {
-  prefs.light = localStorage.getItem('pb-bg') !== 'dark';
+  // 背景は黒がはじめの設定。前の版は開くたびに白を保存していたので、新しい置き場所（pb-bg2）で選び直した分だけ覚える
+  prefs.light = localStorage.getItem('pb-bg2') === 'light';
   prefs.wood = localStorage.getItem('pb-floor') === 'wood';
   prefs.vertical = localStorage.getItem('pb-orient') === 'v';
   prefs.threeD = localStorage.getItem('pb-3d') === '1';
@@ -1881,7 +1882,7 @@ function setNeon(g) {
 }
 function setLight(l) {
   prefs.light = l; home.classList.toggle('light', l); $('h-bg').textContent = `背景：${l ? '白' : '黒'}`;
-  try { localStorage.setItem('pb-bg', l ? 'light' : 'dark'); } catch (e) {}
+  try { localStorage.setItem('pb-bg2', l ? 'light' : 'dark'); } catch (e) {}
   if (play) applyBoard();
 }
 $('h-bg').onclick = () => setLight(!prefs.light);
