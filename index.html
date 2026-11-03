@@ -89,6 +89,18 @@ body.t-dark.t-green { --surface: #08140e; --line: #183d2c; --accent: #2dff9a; }
 button.big { min-height: 48px; padding: 8px 16px; font-size: 16px; }
 button.shoot { background: #e8742a; border-color: #e8742a; color: #fff; }
 .stepnav { display: inline-flex; align-items: center; gap: 4px; }
+/* 配置・録画の小さなボタン：アイコンの下に短い文字（アイコンだけだと何のボタンか分からないので、文字は必ず付ける） */
+.ibtn { display: inline-flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; min-width: 56px; min-height: 50px; padding: 4px 3px; font: 700 12px/1.2 var(--body); white-space: nowrap; }
+.ibtn svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.ib-x { display: grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; background: #e5484d; color: #fff; font: 700 13px/1 var(--num); }
+.ibtn.off .ib-x { background: var(--line); color: var(--muted); }
+.ibtn.clearall { color: #e5484d; }
+.ibtn:disabled { opacity: .4; }
+#p-setup, #p-rec2 { gap: 5px; }
+.stepbox { border: 1px solid transparent; min-width: 50px; box-sizing: border-box; }
+.stepbox b { font: 700 17px/22px var(--num); font-variant-numeric: tabular-nums; }
+/* 説明文は2行まで。タップすると全部出る */
+.hint.clamp { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; cursor: pointer; }
 .pair { display: inline-flex; gap: 8px; }
 .viewnote { font-size: 13px; color: var(--muted); }
 #viewBtn { display: inline-flex; align-items: center; gap: 5px; }
@@ -413,12 +425,14 @@ button.tritem.on { background: var(--fg); color: var(--bg); border-color: var(--
       <button id="bgBtn">背景：白</button>
     </div>
     <div class="row" id="p-setup">
-      <button id="lineupBtn">選手を当てる</button>
-      <button id="defBtn">DFを表示</button>
-      <button class="dfmode">守り方</button>
-      <button id="resetBtn" class="clearall">動きを全部消す</button>
+      <button id="lineupBtn" class="ibtn"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 3 3 6l2 4 2-1v12h10V9l2 1 2-4-5-3c-.5 1.5-2 2.5-4 2.5S8.5 4.5 8 3Z"/></svg><span>選手を当てる</span></button>
+      <button id="defBtn" class="ibtn"><b class="ib-x">X</b><span>DFを表示</span></button>
+      <button class="dfmode ibtn"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 4 6v6c0 4.5 3.4 8 8 9 4.6-1 8-4.5 8-9V6Z"/></svg><span>守り方</span></button>
+      <button id="cntBtn" class="ibtn" aria-expanded="false"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="8" cy="8" r="3"/><circle cx="16.5" cy="9" r="2.5"/><path d="M2.5 20c.5-4 2.7-6 5.5-6s5 2 5.5 6M13.5 14.5c.9-.7 1.9-1 3-1 2.4 0 4.2 1.8 4.6 5.5"/></svg><span id="cntLabel">人数</span></button>
+      <button id="resetBtn" class="ibtn clearall"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 11v6M14 11v6"/></svg><span>全部消す</span></button>
     </div>
-    <div class="row tools" id="p-tools">
+    <!-- 人数は、上の「人数」を押したときだけ出す -->
+    <div class="row tools viewpanel" id="p-tools" hidden>
       <span class="counter">攻め<button data-cnt="o-" aria-label="攻めを減らす">−</button><b id="cntO">5</b><button data-cnt="o+" aria-label="攻めを増やす">＋</button></span>
       <span class="counter">守り<button data-cnt="x-" aria-label="守りを減らす">−</button><b id="cntX">5</b><button data-cnt="x+" aria-label="守りを増やす">＋</button></span>
     </div>
@@ -426,13 +440,13 @@ button.tritem.on { background: var(--fg); color: var(--bg); border-color: var(--
       <button id="recEnd" class="big primary">■ 録画終了</button>
       <button id="undoBtn" class="big">↶ 1つ戻す</button>
       <button id="shotBtn" class="big shoot">シュート</button>
-      <span class="stepnav">
-        <button id="prevStep" aria-label="前のステップ">◀ 前へ</button>
-        <span class="stepno" id="stepNo"></span>
-        <button id="nextStep" aria-label="次のステップ">次へ ▶</button>
-      </span>
-      <button id="addStep">＋ステップ</button>
-      <button id="redoAll" class="clearall">動きを全部消す</button>
+    </div>
+    <div class="row" id="p-rec2" hidden>
+      <button id="prevStep" class="ibtn" aria-label="前のステップ"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5 8 12l7 7"/></svg><span>前へ</span></button>
+      <span class="ibtn stepbox"><b id="stepNo"></b><span>ステップ</span></span>
+      <button id="nextStep" class="ibtn" aria-label="次のステップ"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 5 7 7-7 7"/></svg><span>次へ</span></button>
+      <button id="addStep" class="ibtn"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg><span>ステップ追加</span></button>
+      <button id="redoAll" class="ibtn clearall"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 11v6M14 11v6"/></svg><span>全部消す</span></button>
     </div>
     <div class="row" id="p-play" hidden>
       <button id="loopBtn" aria-pressed="false">↻ くり返し</button>
@@ -445,7 +459,7 @@ button.tritem.on { background: var(--fg); color: var(--bg); border-color: var(--
         <button data-ink="erase">消しゴム</button><button id="inkClear">全部消す</button>
       </span>
     </div>
-    <div class="row"><span class="hint" id="hint"></span></div>
+    <div class="row"><span class="hint clamp" id="hint" title="タップで全部表示"></span></div>
 
   </div>
 </div>
@@ -515,9 +529,9 @@ button.tritem.on { background: var(--fg); color: var(--bg); border-color: var(--
       <ol>
         <li>選手の丸を<b>指でドラッグ</b>して並べます。</li>
         <li>選手を<b>タップ</b>すると、その選手にボールを渡します。</li>
-        <li><span class="kb">DFを表示</span> で守りを出す・隠す、<span class="kb">守り方</span> で守り方を選びます（下の「守り方」を見てください）。</li>
+        <li><span class="kb">DFを表示</span> で守りを出す・隠す、<span class="kb">守り方</span>（盾のマーク）で守り方を選びます（下の「守り方」を見てください）。</li>
         <li><span class="kb">選手を当てる</span>：チーム情報に登録した選手を、作戦の1〜5の位置に当てはめます。コートの丸が本当の背番号になり、下に呼び名が出ます。</li>
-        <li><b>人数</b>：<span class="kb">攻め − ＋</span><span class="kb">守り − ＋</span> で、コートに出す人数を決めます（攻め1〜5人、守り0〜5人）。</li>
+        <li><span class="kb">人数</span> を押すと出る <span class="kb">攻め − ＋</span><span class="kb">守り − ＋</span> で、コートに出す人数を決めます（攻め1〜5人、守り0〜5人）。</li>
       </ol>
       <h4>道具箱：パイロン・マーカー・書き込み</h4>
       <figure><span class="hfig" data-fig="tools"></span><figcaption>パイロン（オレンジ）・マーカー（黄色）・ペンの線（ピンク）</figcaption></figure>
@@ -526,7 +540,7 @@ button.tritem.on { background: var(--fg); color: var(--bg); border-color: var(--
         <li>置いたパイロン・マーカーはドラッグで動かせます。<b>コートの外（道具箱）まで持っていくと消えます</b>。</li>
         <li><span class="kb">✎ 書き込み</span>：指でなぞって線を書けます（作戦と一緒に<b>保存</b>されます。再生画面の「説明ペン」は保存されません）。<span class="kb">🗑 消す</span>：押してから線やパイロンをタップすると消えます。どちらも、もう一度押すと終わります。</li>
       </ul>
-      <p class="note">動きを録画した後は、配置を変えられません。<span class="kb">動きを全部消す</span> で録画前に戻せます。</p>
+      <p class="note">動きを録画した後は、配置を変えられません。<span class="kb">全部消す</span> で録画前に戻せます。</p>
     </details>
 
     <details><summary>② 録画：指でなぞって動きを記録</summary>
@@ -544,7 +558,7 @@ button.tritem.on { background: var(--fg); color: var(--bg); border-color: var(--
       <h4>同時に動かす・順番に動かす</h4>
       <ul>
         <li><b>同時に</b>：同じステップのまま、1人ずつ順番になぞります。再生するといっせいに動きます。</li>
-        <li><b>順番に</b>：1人目をなぞったら <span class="kb">＋ステップ</span> を押して、次の人をなぞります。</li>
+        <li><b>順番に</b>：1人目をなぞったら <span class="kb">ステップ追加</span> を押して、次の人をなぞります。</li>
         <li>走る人を先になぞって、最後にパス。走り終わったところへパスが出ます。</li>
       </ul>
       <h4>まちがえたとき・直したいとき</h4>
@@ -552,7 +566,7 @@ button.tritem.on { background: var(--fg); color: var(--bg); border-color: var(--
         <li><span class="kb">↶ 1つ戻す</span>：そのステップで最後に記録した動きを1つ消します。</li>
         <li><span class="kb">◀ 前へ</span><span class="kb">次へ ▶</span>：ステップを行き来します。前のステップの線は薄く表示されます。</li>
         <li><b>選手を長押し</b>：そのステップのその選手の動きだけを消します。ほかの選手の動きは残るので、1人だけなぞり直せます。</li>
-        <li><span class="kb">動きを全部消す</span>：録画した動きを全部消して、ステップ1から録り直します（選手の配置やパイロンは残ります）。</li>
+        <li><span class="kb">全部消す</span>：録画した動きを全部消して、ステップ1から録り直します（選手の配置やパイロンは残ります）。</li>
         <li><b>手ブレ補正</b>：なぞり終わりのプルプルや、途中の小さな揺れは自動でならされます。</li>
       </ul>
     </details>
@@ -1211,7 +1225,7 @@ svg.addEventListener('pointerdown', e => {
   if (id[0] === 'x' && autoDef()) { toast('守りは「守り方」に合わせて自動で動きます。「手動」にすると動かせます'); return; }
   const S = stateAt(play, cur), E = applyStep(clone(S), play.steps[cur]);
   if (mode === 'setup') {
-    if (hasMoves()) { toast('動きを録画した後は配置を変えられません。「動きを全部消す」で戻せます'); return; }
+    if (hasMoves()) { toast('動きを録画した後は配置を変えられません。「全部消す」で戻せます'); return; }
     live = { type: id === 'B' ? 'ball' : 'setup', id, at, from: ballXY(E), t0: performance.now(), moved: false };
   } else if (id === 'B') {
     live = { type: 'ball', from: ballXY(E), at, holder: E.holder };
@@ -1428,8 +1442,11 @@ addEventListener('resize', () => updateUI(false));   // updateUI の中で fitLa
 document.querySelectorAll('[data-tool]').forEach(b => b.onclick = () => { tool = tool === b.dataset.tool ? 'move' : b.dataset.tool; updateUI(false); drawEdit(); });
 // 人数：攻めは1〜5人、守りは0〜5人。出ている選手は 1番から順に
 const countOf = side => side === 'x' && !play.showDef ? 0 : (play.use ? play.use.filter(id => id[0] === side).length : 5);
+let cntOpen = false;   // 「人数」の段を開いているか
+$('cntBtn').onclick = () => { cntOpen = !cntOpen; updateUI(false); };
+$('hint').onclick = () => { $('hint').classList.toggle('clamp'); fitLayout(); };
 document.querySelectorAll('[data-cnt]').forEach(b => b.onclick = () => {
-  if (hasMoves()) { toast('動きを録画した後は人数を変えられません。「動きを全部消す」で戻せます'); return; }
+  if (hasMoves()) { toast('動きを録画した後は人数を変えられません。「全部消す」で戻せます'); return; }
   const side = b.dataset.cnt[0], d = b.dataset.cnt[1] === '+' ? 1 : -1;
   let o = countOf('o'), x = countOf('x');
   if (side === 'o') o = Math.max(1, Math.min(5, o + d)); else x = Math.max(0, Math.min(5, x + d));
@@ -1536,14 +1553,18 @@ function updateUI(full = true) {
   $('modeChip').hidden = !$('sharedBanner').hidden;   // 上に帯の案内が出ているときは重ねない
   $('modeChip').textContent = { setup: '1 配置モード', rec: '2 録画中', play: anim ? '3 再生中' : '3 再生モード' }[mode];
   $('p-setup').hidden = mode !== 'setup'; $('p-rec').hidden = mode !== 'rec'; $('p-play').hidden = mode !== 'play';
-  $('p-tools').hidden = mode !== 'setup'; $('p-playmain').hidden = mode !== 'play'; $('tray').hidden = mode !== 'setup';
+  $('p-tools').hidden = mode !== 'setup' || !cntOpen; $('p-rec2').hidden = mode !== 'rec';
+  $('cntBtn').classList.toggle('on', cntOpen && mode === 'setup'); $('cntBtn').setAttribute('aria-expanded', cntOpen);
+  $('cntLabel').textContent = `人数 ${countOf('o')}対${countOf('x')}`;
+  $('p-playmain').hidden = mode !== 'play'; $('tray').hidden = mode !== 'setup';
   document.querySelectorAll('[data-tool]').forEach(b => b.classList.toggle('on', b.dataset.tool === tool));
   $('cntO').textContent = countOf('o'); $('cntX').textContent = countOf('x');
   $('selfOff').hidden = mode !== 'play'; $('selfDef').hidden = mode !== 'play' || !play.showDef;
   const used = play.steps.filter(s => s.moves.length).length;
-  $('stepNo').textContent = `ステップ ${cur + 1} / ${play.steps.length}`;
+  $('stepNo').textContent = `${cur + 1}/${play.steps.length}`;
   $('prevStep').disabled = cur === 0; $('nextStep').disabled = cur >= play.steps.length - 1;
-  $('defBtn').textContent = play.showDef ? 'DFを隠す' : 'DFを表示';
+  $('defBtn').querySelector('span').textContent = play.showDef ? 'DFを隠す' : 'DFを表示';
+  $('defBtn').classList.toggle('off', !play.showDef);
   $('bgBtn').textContent = `背景：${bgName()}`;
   $('orientBtn').textContent = prefs.vertical ? '横向きにする' : '縦向きにする';
   $('v2d').classList.toggle('on', !prefs.threeD); $('v3d').classList.toggle('on', prefs.threeD);
@@ -1557,7 +1578,11 @@ function updateUI(full = true) {
   $('redoAll').disabled = !hasMoves(); $('recEnd').disabled = !hasMoves();
   $('undoBtn').disabled = cur === 0 && !(play.steps[0] && play.steps[0].moves.length);
   const dm = PBDefense.MODES.find(m => m.id === defMode());
-  document.querySelectorAll('.dfmode').forEach(b => { b.textContent = `守り方：${dm.name}`; b.hidden = !play.showDef; });
+  document.querySelectorAll('.dfmode').forEach(b => {
+    if (b.classList.contains('ibtn')) b.querySelector('span').textContent = dm.id === 'man' ? 'マンツー' : dm.name;
+    else b.textContent = `守り方：${dm.name}`;
+    b.hidden = !play.showDef;
+  });
   $('view3dBtn').disabled = !hasMoves();
   if (full) renderSelf();
   document.querySelectorAll('[data-self]').forEach(b => {
