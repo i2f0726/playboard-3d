@@ -130,6 +130,16 @@ button.tritem.on { background: var(--fg); color: var(--bg); border-color: var(--
 #tray.drop .tritem { opacity: .5; }
 @media (max-height: 560px) { #tray { display: grid; grid-template-columns: repeat(2, auto); } .tritem { width: 46px; } .tritem svg, .tri-ic { width: 24px; height: 24px; line-height: 24px; font-size: 18px; } }
 #tray[hidden] { display: none; }
+/* コートを大きくするための並べ方（fitLayout() が、コートがいちばん大きくなる組み合わせを選ぶ）
+   side：横長の画面では、下のボタンをコートの右に並べる ／ traybelow：縦長の画面では、道具箱をコートの下に横並びにする */
+.app.side { grid-template-columns: minmax(0, 1fr) minmax(250px, 340px); grid-template-rows: auto minmax(0, 1fr); column-gap: 12px; }
+.app.side .top { grid-column: 1 / -1; }
+.app.side .stage { grid-column: 1; grid-row: 2; }
+.app.side .bottom { grid-column: 2; grid-row: 2; align-content: start; min-height: 0; overflow-y: auto; }
+.stage.traybelow { grid-template-rows: minmax(0, 1fr) auto; }
+.stage.traybelow .boardwrap { grid-column: 1 / -1; grid-row: 1; }
+.stage.traybelow #tray { grid-column: 1 / -1; grid-row: 2; display: flex; flex-direction: row; justify-content: center; }
+.stage.traybelow #tray[hidden] { display: none; }
 .counter { display: inline-flex; align-items: center; gap: 4px; font-size: 14px; font-weight: 700; }
 .counter button { min-width: 36px; min-height: 36px; padding: 0; font-size: 18px; }
 .counter b { min-width: 1.2em; text-align: center; font: 700 18px var(--num); }
@@ -344,7 +354,7 @@ button.tritem.on { background: var(--fg); color: var(--bg); border-color: var(--
     <button id="helpBtn" class="iconbtn" aria-label="使い方">？</button>
   </div>
 
-  <div class="stage">
+  <div class="stage" id="stage">
     <div class="selfcol" id="selfOff" aria-label="自分の番号（攻め）" hidden></div>
     <!-- 配置モードの道具箱：パイロン・マーカーはコートへドラッグして置く。ペン・消すは選んでからコートで使う -->
     <div class="tray" id="tray" aria-label="道具" hidden>
@@ -1398,7 +1408,21 @@ $('defBtn').onclick = () => {
 $('viewBtn').onclick = () => {
   const open = $('viewPanel').hidden;
   $('viewPanel').hidden = !open; $('viewBtn').classList.toggle('on', open); $('viewBtn').setAttribute('aria-expanded', open);
+  fitLayout();
 };
+// コートがいちばん大きくなる並べ方を、実際に並べて測って選ぶ（画面の向き・モード・ハーフ/オールで変わる）
+function fitLayout() {
+  const app = document.querySelector('.app'), stage = $('stage'), b = $('b3d');
+  const tries = [[false, false], [true, false], [false, true], [true, true]].filter(([, t]) => !t || mode === 'setup');
+  let best = null, bestArea = 0;
+  for (const [side, below] of tries) {
+    app.classList.toggle('side', side); stage.classList.toggle('traybelow', below);
+    const area = b.offsetWidth * b.offsetHeight;
+    if (area > bestArea * 1.03) { best = [side, below]; bestArea = area; }   // ほとんど同じなら、先に試した（ふつうの）並べ方のまま
+  }
+  app.classList.toggle('side', best[0]); stage.classList.toggle('traybelow', best[1]);
+}
+addEventListener('resize', () => updateUI(false));   // updateUI の中で fitLayout() も呼ぶ
 // 道具の切り替え
 // ペン・消すは押すたびに ON/OFF（OFF のときは選手や道具をドラッグで動かせる）
 document.querySelectorAll('[data-tool]').forEach(b => b.onclick = () => { tool = tool === b.dataset.tool ? 'move' : b.dataset.tool; updateUI(false); drawEdit(); });
@@ -1540,11 +1564,13 @@ function updateUI(full = true) {
     b.classList.toggle('on', (b.dataset.self || null) === selfId);
     b.hidden = !!(b.dataset.self && play.use && !play.use.includes(b.dataset.self));   // 出ていない選手の番号は出さない
   });
+  fitLayout();
+  const trayAt = $('stage').classList.contains('traybelow') ? '下' : '左';
   $('hint').textContent = {
     setup: {
       pen: '指でなぞると、コートに線を書けます（もう一度「ペン」を押すと終わります）',
       erase: 'パイロン・マーカー・ペンの線をタップすると消えます（もう一度「消す」を押すと終わります）',
-    }[tool] || (hasMoves() ? '動きを録画済みなので選手の配置は固定です。左の道具箱からパイロン・マーカーは置けます' : '選手をドラッグで配置。左の道具箱のパイロン・マーカーはコートへドラッグして置きます'),
+    }[tool] || (hasMoves() ? `動きを録画済みなので選手の配置は固定です。${trayAt}の道具箱からパイロン・マーカーは置けます` : `選手をドラッグで配置。${trayAt}の道具箱のパイロン・マーカーはコートへドラッグして置きます`),
     rec: '選手をなぞると動きを記録。ボールを味方へなぞるか、受ける選手をダブルタップするとパス。「シュート」でシュート。選手を長押しすると、その選手の動きだけ消せます',
     play: anim ? `再生中（${used}ステップ）` : (selfId ? `${label(selfId)}の動きが黄色で光ります` : '再生ボタンで動きを見られます'),
   }[mode];
