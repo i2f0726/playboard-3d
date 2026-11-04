@@ -67,12 +67,9 @@ body.t-dark.t-green { --surface: #08140e; --line: #183d2c; --accent: #2dff9a; }
 .selfcol .cap { font-size: 12px; color: var(--fg); opacity: .75; text-align: center; line-height: 1.3; }
 .selfcol button { min-width: 44px; min-height: 36px; padding: 4px 6px; font-family: var(--num); font-size: 17px; }
 .selfcol button small { display: block; font: 700 10px/1.2 var(--body); max-width: 5em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.b3d { --ar: 1; position: relative; aspect-ratio: var(--ar); width: min(100cqw - 10px, (100cqh - 10px) * var(--ar)); max-width: 100%;   /* 外枠のぶん少し内側に */
+.b3d { --ar: 1; position: relative; aspect-ratio: var(--ar); width: min(100cqw, 100cqh * var(--ar)); max-width: 100%;
   transform-style: preserve-3d; transform-origin: 50% 62%; transition: transform .8s cubic-bezier(.65,0,.25,1); }
 .b3d.three { transform: rotateX(55deg) scale(.94); }
-/* コートの外枠：配置＝青、録画＝赤（モードのボタンと同じ色）で、今どちらのモードか分かるように */
-.b3d[data-mode="setup"] #board { box-shadow: 0 0 0 3px var(--m-setup), 0 0 14px rgba(10,143,214,.55); }
-.b3d[data-mode="rec"] #board { box-shadow: 0 0 0 3px var(--m-rec), 0 0 14px rgba(229,72,77,.55); }
 .hint.clamp { min-height: 3.2em; }   /* 説明が1行のときも2行ぶん取って、モードを変えてもコートの大きさが変わらないように */
 #board { display: block; width: 100%; height: 100%; touch-action: none; user-select: none; -webkit-user-select: none; border-radius: 10px; }
 #figs { position: absolute; inset: 0; transform-style: preserve-3d; pointer-events: none; }
@@ -175,7 +172,7 @@ button.tritem.on { background: var(--fg); color: var(--bg); border-color: var(--
 .stage.traybelow #tray { grid-column: 1 / -1; grid-row: 2; display: flex; flex-direction: row; justify-content: center; }
 .stage.traybelow #tray[hidden] { display: none; }
 #tray.ghost { visibility: hidden; pointer-events: none; }
-.stage.pin .boardwrap { place-items: start center; padding-top: 6px; box-sizing: border-box; }   /* 配置・録画ではコートを上にそろえる（外枠が切れないよう少し下げる） */
+.stage.pin .boardwrap { place-items: start center; }   /* 配置・録画ではコートを上にそろえる */
 .counter { display: inline-flex; align-items: center; gap: 4px; font-size: 14px; font-weight: 700; }
 .counter button { min-width: 36px; min-height: 36px; padding: 0; font-size: 18px; }
 .counter b { min-width: 1.2em; text-align: center; font: 700 18px var(--num); }
@@ -1606,7 +1603,7 @@ function updateUI(full = true) {
   $('modeChip').className = 'modechip ' + mode;
   $('modeChip').hidden = !$('sharedBanner').hidden;   // 上に帯の案内が出ているときは重ねない
   $('modeChip').textContent = { setup: '1 配置モード', rec: '2 録画中', play: anim ? '3 再生中' : '3 再生モード' }[mode];
-  showPanels(mode, cntOpen); $('b3d').dataset.mode = mode;
+  showPanels(mode, cntOpen);
   $('cntBtn').classList.toggle('on', cntOpen && mode === 'setup'); $('cntBtn').setAttribute('aria-expanded', cntOpen);
   $('cntLabel').textContent = `人数 ${countOf('o')}対${countOf('x')}`;
   document.querySelectorAll('[data-tool]').forEach(b => b.classList.toggle('on', b.dataset.tool === tool));
