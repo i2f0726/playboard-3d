@@ -417,7 +417,10 @@ function desiredCam() {
   // 選手目線：顔の向き（走っている方向／止まっているときはボールの方）を見る
   const p = players[selfId], fwd = new THREE.Vector3(Math.sin(p.face), 0, Math.cos(p.face));
   const eye = p.g.position.clone().add(new THREE.Vector3(0, 1.62, 0)).addScaledVector(fwd, .2);
-  return { pos: eye, tgt: eye.clone().addScaledVector(fwd, 6).setY(1.3), fov: 72 };
+  // 視野は「横の広さ」で決める：横に約110度（周りの味方・相手が入る広さ）。縦画面で縦に伸びすぎてゆがまないよう、縦は105度まで
+  const h = THREE.MathUtils.degToRad(110), v = 2 * Math.atan(Math.tan(h / 2) / aspect);
+  const fov = THREE.MathUtils.clamp(THREE.MathUtils.radToDeg(v), 72, 105);
+  return { pos: eye, tgt: eye.clone().addScaledVector(fwd, 6).setY(1.3), fov };
 }
 function updateCamera(dt, snap) {
   if (camMode === 'free') { controls.update(); return; }
