@@ -67,9 +67,13 @@ body.t-dark.t-green { --surface: #08140e; --line: #183d2c; --accent: #2dff9a; }
 .selfcol .cap { font-size: 12px; color: var(--fg); opacity: .75; text-align: center; line-height: 1.3; }
 .selfcol button { min-width: 44px; min-height: 36px; padding: 4px 6px; font-family: var(--num); font-size: 17px; }
 .selfcol button small { display: block; font: 700 10px/1.2 var(--body); max-width: 5em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.b3d { --ar: 1; position: relative; aspect-ratio: var(--ar); width: min(100cqw, 100cqh * var(--ar)); max-width: 100%;
+.b3d { --ar: 1; position: relative; aspect-ratio: var(--ar); width: min(100cqw - 10px, (100cqh - 10px) * var(--ar)); max-width: 100%;   /* 外枠のぶん少し内側に */
   transform-style: preserve-3d; transform-origin: 50% 62%; transition: transform .8s cubic-bezier(.65,0,.25,1); }
 .b3d.three { transform: rotateX(55deg) scale(.94); }
+/* コートの外枠：配置＝青、録画＝赤（モードのボタンと同じ色）で、今どちらのモードか分かるように */
+.b3d[data-mode="setup"] #board { box-shadow: 0 0 0 3px var(--m-setup), 0 0 14px rgba(10,143,214,.55); }
+.b3d[data-mode="rec"] #board { box-shadow: 0 0 0 3px var(--m-rec), 0 0 14px rgba(229,72,77,.55); }
+.hint.clamp { min-height: 3.2em; }   /* 説明が1行のときも2行ぶん取って、モードを変えてもコートの大きさが変わらないように */
 #board { display: block; width: 100%; height: 100%; touch-action: none; user-select: none; -webkit-user-select: none; border-radius: 10px; }
 #figs { position: absolute; inset: 0; transform-style: preserve-3d; pointer-events: none; }
 .fig { position: absolute; transform-origin: 50% 100%; transform: translate(-50%, -100%) rotateX(-55deg); }
@@ -170,6 +174,8 @@ button.tritem.on { background: var(--fg); color: var(--bg); border-color: var(--
 .stage.traybelow .boardwrap { grid-column: 1 / -1; grid-row: 1; }
 .stage.traybelow #tray { grid-column: 1 / -1; grid-row: 2; display: flex; flex-direction: row; justify-content: center; }
 .stage.traybelow #tray[hidden] { display: none; }
+#tray.ghost { visibility: hidden; pointer-events: none; }
+.stage.pin .boardwrap { place-items: start center; padding-top: 6px; box-sizing: border-box; }   /* 配置・録画ではコートを上にそろえる（外枠が切れないよう少し下げる） */
 .counter { display: inline-flex; align-items: center; gap: 4px; font-size: 14px; font-weight: 700; }
 .counter button { min-width: 36px; min-height: 36px; padding: 0; font-size: 18px; }
 .counter b { min-width: 1.2em; text-align: center; font: 700 18px var(--num); }
@@ -1442,20 +1448,46 @@ $('viewBtn').onclick = () => {
   $('viewPanel').hidden = !open; $('viewBtn').classList.toggle('on', open); $('viewBtn').setAttribute('aria-expanded', open);
   fitLayout();
 };
+// モードごとに出すボタンの段・道具箱・自分の番号
+function showPanels(m, cnt) {
+  $('p-setup').hidden = m !== 'setup'; $('p-rec').hidden = m !== 'rec'; $('p-play').hidden = m !== 'play';
+  $('p-tools').hidden = m !== 'setup' || !cnt; $('p-rec2').hidden = m !== 'rec';
+  $('p-playmain').hidden = m !== 'play';
+  // 録画では道具箱を見えなくするだけで場所は残す（配置と録画で、コートの位置がずれないように）
+  // （コートの下に置くときは、場所を残さなくても上にそろえれば位置は同じ）
+  const below = $('stage').classList.contains('traybelow');
+  $('tray').hidden = m === 'play' || (m === 'rec' && below); $('tray').classList.toggle('ghost', m === 'rec');
+  $('stage').classList.toggle('pin', m !== 'play');
+  $('selfOff').hidden = m !== 'play'; $('selfDef').hidden = m !== 'play' || !play.showDef;
+}
 // コートがいちばん大きくなる並べ方を、実際に並べて測って選ぶ（画面の向き・モード・ハーフ/オールで変わる）
 function fitLayout() {
   const app = document.querySelector('.app'), stage = $('stage'), b = $('b3d');
   // 右に並べるかどうかは、モードを変えても変えない（「配置・録画・再生」の場所が動かないように）。画面の大きさ・コートが変わったら決め直す
   const key = `${innerWidth}x${innerHeight} ${play.court} ${prefs.vertical}`;
-  const tries = [[false, false], [true, false], [false, true], [true, true]]
-    .filter(([s, t]) => (!t || mode === 'setup') && (fitLayout.key !== key || s === fitLayout.side));
-  let best = null, bestArea = 0;
-  for (const [side, below] of tries) {
-    app.classList.toggle('side', side); stage.classList.toggle('traybelow', below);
-    const area = b.offsetWidth * b.offsetHeight;
-    if (area > bestArea * 1.03) { best = [side, below]; bestArea = area; }   // ほとんど同じなら、先に試した（ふつうの）並べ方のまま
+  b.style.maxWidth = '';
+  const pick = (m, side) => {
+    const tries = [[false, false], [true, false], [false, true], [true, true]]
+      .filter(([s, t]) => (!t || m === 'setup') && (side === undefined || s === side));
+    let best = null, bestArea = 0;
+    for (const [s, t] of tries) {
+      app.classList.toggle('side', s); stage.classList.toggle('traybelow', t);
+      const area = b.offsetWidth * b.offsetHeight;
+      if (area > bestArea * 1.03) { best = [s, t, b.offsetWidth]; bestArea = area; }   // ほとんど同じなら、先に試した（ふつうの）並べ方のまま
+    }
+    return best;
+  };
+  const best = pick(mode, fitLayout.key === key ? fitLayout.side : undefined);
+  // 配置と録画では、コートを同じ大きさ・同じ位置にする：道具箱の置き方は配置モードで決め、両方で測って小さいほうに合わせる
+  let cap = 0;
+  if (mode === 'setup' || mode === 'rec') {
+    showPanels('setup', false); const s = pick('setup', best[0]);
+    stage.classList.toggle('traybelow', s[1]); showPanels('rec', false); const r = b.offsetWidth;
+    showPanels(mode, cntOpen);
+    best[1] = s[1]; cap = Math.min(s[2], r);
   }
   app.classList.toggle('side', best[0]); stage.classList.toggle('traybelow', best[1]);
+  if (cap) b.style.maxWidth = cap + 'px';
   fitLayout.key = key; fitLayout.side = best[0];
 }
 addEventListener('resize', () => updateUI(false));   // updateUI の中で fitLayout() も呼ぶ
@@ -1574,14 +1606,11 @@ function updateUI(full = true) {
   $('modeChip').className = 'modechip ' + mode;
   $('modeChip').hidden = !$('sharedBanner').hidden;   // 上に帯の案内が出ているときは重ねない
   $('modeChip').textContent = { setup: '1 配置モード', rec: '2 録画中', play: anim ? '3 再生中' : '3 再生モード' }[mode];
-  $('p-setup').hidden = mode !== 'setup'; $('p-rec').hidden = mode !== 'rec'; $('p-play').hidden = mode !== 'play';
-  $('p-tools').hidden = mode !== 'setup' || !cntOpen; $('p-rec2').hidden = mode !== 'rec';
+  showPanels(mode, cntOpen); $('b3d').dataset.mode = mode;
   $('cntBtn').classList.toggle('on', cntOpen && mode === 'setup'); $('cntBtn').setAttribute('aria-expanded', cntOpen);
   $('cntLabel').textContent = `人数 ${countOf('o')}対${countOf('x')}`;
-  $('p-playmain').hidden = mode !== 'play'; $('tray').hidden = mode !== 'setup';
   document.querySelectorAll('[data-tool]').forEach(b => b.classList.toggle('on', b.dataset.tool === tool));
   $('cntO').textContent = countOf('o'); $('cntX').textContent = countOf('x');
-  $('selfOff').hidden = mode !== 'play'; $('selfDef').hidden = mode !== 'play' || !play.showDef;
   const used = play.steps.filter(s => s.moves.length).length;
   $('stepNo').textContent = `${cur + 1}/${play.steps.length}`;
   $('prevStep').disabled = cur === 0; $('nextStep').disabled = cur >= play.steps.length - 1;
