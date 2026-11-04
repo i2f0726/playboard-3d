@@ -148,6 +148,9 @@ button.tritem.on { background: var(--fg); color: var(--bg); border-color: var(--
 .app.side .top { grid-column: 1 / -1; }
 .app.side .stage { grid-column: 1; grid-row: 2; }
 .app.side .bottom { grid-column: 2; grid-row: 2; align-content: start; min-height: 0; overflow-y: auto; }
+/* 「配置・録画・再生」は、どのモードでも同じ場所に：ふだんは画面のいちばん下、横並び（side）のときは右の列のいちばん上。「表示」の段はそのすぐ隣 */
+#modeRow { order: 10; } #viewPanel { order: 9; }
+.app.side #modeRow { order: -2; } .app.side #viewPanel { order: -1; }
 .stage.traybelow { grid-template-rows: minmax(0, 1fr) auto; }
 .stage.traybelow .boardwrap { grid-column: 1 / -1; grid-row: 1; }
 .stage.traybelow #tray { grid-column: 1 / -1; grid-row: 2; display: flex; flex-direction: row; justify-content: center; }
@@ -402,7 +405,7 @@ button.tritem.on { background: var(--fg); color: var(--bg); border-color: var(--
       <button id="view3dBtn" class="btn3d"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><path d="M12 2.5 21 7.5v9L12 21.5 3 16.5v-9Z"/><path d="M3 7.5 12 12.5 21 7.5M12 12.5v9"/></svg>3Dで見る</button>
     </div>
     <!-- 上から：モードと「表示」 →（表示の設定）→ 今のモードのボタン → 説明 -->
-    <div class="row">
+    <div class="row" id="modeRow">
       <div class="seg" role="tablist" aria-label="モード">
         <button id="m-setup" data-mode="setup"><i class="mn">1</i>配置</button>
         <button id="m-rec" data-mode="rec"><i class="mn">2</i><span class="recdot"></span>録画</button>
@@ -1427,7 +1430,10 @@ $('viewBtn').onclick = () => {
 // コートがいちばん大きくなる並べ方を、実際に並べて測って選ぶ（画面の向き・モード・ハーフ/オールで変わる）
 function fitLayout() {
   const app = document.querySelector('.app'), stage = $('stage'), b = $('b3d');
-  const tries = [[false, false], [true, false], [false, true], [true, true]].filter(([, t]) => !t || mode === 'setup');
+  // 右に並べるかどうかは、モードを変えても変えない（「配置・録画・再生」の場所が動かないように）。画面の大きさ・コートが変わったら決め直す
+  const key = `${innerWidth}x${innerHeight} ${play.court} ${prefs.vertical}`;
+  const tries = [[false, false], [true, false], [false, true], [true, true]]
+    .filter(([s, t]) => (!t || mode === 'setup') && (fitLayout.key !== key || s === fitLayout.side));
   let best = null, bestArea = 0;
   for (const [side, below] of tries) {
     app.classList.toggle('side', side); stage.classList.toggle('traybelow', below);
@@ -1435,6 +1441,7 @@ function fitLayout() {
     if (area > bestArea * 1.03) { best = [side, below]; bestArea = area; }   // ほとんど同じなら、先に試した（ふつうの）並べ方のまま
   }
   app.classList.toggle('side', best[0]); stage.classList.toggle('traybelow', best[1]);
+  fitLayout.key = key; fitLayout.side = best[0];
 }
 addEventListener('resize', () => updateUI(false));   // updateUI の中で fitLayout() も呼ぶ
 // 道具の切り替え
