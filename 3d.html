@@ -338,6 +338,12 @@ function handPos(id) {
   return p.g.position.clone().add(new THREE.Vector3(Math.sin(p.face) * .34, 1.05, Math.cos(p.face) * .34));
 }
 let lastBall = new THREE.Vector3();
+// id がこれからパスを出す（出している）相手。出す 0.7 秒前から投げ終わるまで
+const LOOK_BEFORE_PASS = 700;
+function passTarget(f, id) {
+  for (const { m, dur, s } of f.seg.B) if (m.k === 'pass' && m.from === id && f.local >= s - LOOK_BEFORE_PASS && f.local < s + dur) return m.to;
+  return null;
+}
 function updateScene(t, dt) {
   const f = posWithDef(t), prev = posWithDef(Math.max(0, t - 120));
   drawPaths(f);
@@ -352,7 +358,10 @@ function updateScene(t, dt) {
     let want;
     // 自動の守りは横に滑るように動き、いつもボールの方を向く
     const faceBall = id[0] === 'x' && defMode !== 'manual';
-    if (spd > .5 && !faceBall) want = Math.atan2(vx, vz);
+    const to = passTarget(f, id);
+    // パスを出す人は、出す少し前から投げ終わるまで、受ける相手を見る（走っていても首はそちら）
+    if (to) { const r = W(f.pos[to]); want = Math.atan2(r.x - p.g.position.x, r.z - p.g.position.z); }
+    else if (spd > .5 && !faceBall) want = Math.atan2(vx, vz);
     else {
       // ボールを持っていればゴール、それ以外はボールの方を向く
       const look = f.holder === id ? ringPos(q) : ballGuess;
@@ -427,6 +436,7 @@ function desiredCam() {
 // 選手目線の首振り：ドラッグで左右・上下に向きを変える。指を離して少したつと、ゆっくり正面（走る向き）に戻る
 const look = { yaw: 0, pitch: 0, drag: null, idle: 0 };
 const NECK_YAW = THREE.MathUtils.degToRad(110), NECK_UP = THREE.MathUtils.degToRad(35), NECK_DOWN = THREE.MathUtils.degToRad(45);
+const LOOK_GAIN_X = THREE.MathUtils.degToRad(200), LOOK_GAIN_Y = THREE.MathUtils.degToRad(90);   // 画面の幅（高さ）いっぱいなぞったときに回る角度
 canvas.addEventListener('pointerdown', e => {
   if (camMode !== 'pov') return;
   look.drag = { id: e.pointerId, x: e.clientX, y: e.clientY }; canvas.setPointerCapture(e.pointerId);
@@ -434,10 +444,10 @@ canvas.addEventListener('pointerdown', e => {
 });
 canvas.addEventListener('pointermove', e => {
   const d = look.drag; if (!d || d.id !== e.pointerId) return;
-  // 画面の端から端までドラッグすると、ちょうど画面に見えている幅だけ首が回る（指で景色をつかんで動かす感じ）
-  const vf = THREE.MathUtils.degToRad(camera.fov), hf = 2 * Math.atan(Math.tan(vf / 2) * camera.aspect);
-  look.yaw = THREE.MathUtils.clamp(look.yaw + (e.clientX - d.x) / canvas.clientWidth * hf, -NECK_YAW, NECK_YAW);
-  look.pitch = THREE.MathUtils.clamp(look.pitch + (e.clientY - d.y) / canvas.clientHeight * vf, -NECK_DOWN, NECK_UP);
+  // 画面の横幅を半分なぞると約100度回る（1回のスワイプで真横〜後ろまで見られる速さ）
+  const w = canvas.clientWidth, h = canvas.clientHeight;
+  look.yaw = THREE.MathUtils.clamp(look.yaw + (e.clientX - d.x) / w * LOOK_GAIN_X, -NECK_YAW, NECK_YAW);
+  look.pitch = THREE.MathUtils.clamp(look.pitch + (e.clientY - d.y) / h * LOOK_GAIN_Y, -NECK_DOWN, NECK_UP);
   d.x = e.clientX; d.y = e.clientY; look.idle = 0;
 });
 const endLook = e => { if (look.drag && look.drag.id === e.pointerId) look.drag = null; };
