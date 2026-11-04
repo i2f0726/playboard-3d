@@ -151,6 +151,15 @@ button.tritem.on { background: var(--fg); color: var(--bg); border-color: var(--
 /* 「配置・録画・再生」は、どのモードでも同じ場所に：ふだんは画面のいちばん下、横並び（side）のときは右の列のいちばん上。「表示」の段はそのすぐ隣 */
 #modeRow { order: 10; } #viewPanel { order: 9; }
 .app.side #modeRow { order: -2; } .app.side #viewPanel { order: -1; }
+/* メインの3つ（配置・録画・再生）：横幅いっぱいに広げて大きく。選んでいないときも番号をモードの色にして、どれが何か分かるように */
+#modeRow { flex-wrap: nowrap; gap: 6px; }
+#modeRow .seg { flex: 1; min-width: 0; border-width: 2px; border-radius: 14px; }
+#modeRow .seg button { flex: 1; min-width: 0; min-height: 54px; padding: 6px 4px; font-size: 17px; gap: 6px; }
+#modeRow .mn { width: 22px; height: 22px; font-size: 13px; color: #fff; }
+#m-setup .mn { background: var(--m-setup); } #m-rec .mn { background: var(--m-rec); } #m-play .mn { background: var(--m-play); }
+#modeRow .seg button.on { box-shadow: inset 0 -4px 0 rgba(0,0,0,.25); }
+#modeRow .seg button.on .mn { background: #fff; color: #15181d; }
+#modeRow #viewBtn { flex-direction: column; gap: 2px; min-height: 58px; min-width: 56px; padding: 4px 6px; font-size: 12px; border-radius: 14px; }
 .stage.traybelow { grid-template-rows: minmax(0, 1fr) auto; }
 .stage.traybelow .boardwrap { grid-column: 1 / -1; grid-row: 1; }
 .stage.traybelow #tray { grid-column: 1 / -1; grid-row: 2; display: flex; flex-direction: row; justify-content: center; }
