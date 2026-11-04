@@ -1,6 +1,6 @@
 // ===== 守りの自動配置（作戦ボードと3D画面で共通） =====
 // 攻め5人の位置とボールから、守り5人の立ち位置を決める。単位はメートル（コート左上が 0,0）
-// マンツーマン：ボールマンにはゴールとの間で約1m（JBA 基準規則の「ボールとリングの間・1.5m以内」）
+// マンツーマン：ボールマンにはゴールとの間で1.4m（JBA 基準規則の「ボールとリングの間・1.5m以内」）
 //   ワンパス先の相手にはパスコースへ半身出て（ディナイ）、遠い相手からはゴール寄りに絞る（ヘルプ）
 // ゾーン：決まった持ち場を守り、ボールの方へ全体がずれ、いちばん近い人がボールに出る
 (function () {
@@ -28,20 +28,23 @@
     return dist(c, BASKETS[0]) < dist(c, BASKETS[1]) ? BASKETS[0] : BASKETS[1];
   }
 
+  // マークとの間はいつもこれ以上あける（選手の丸どうしが重なって見えないように。丸の半径は約0.4m）
+  const MARK_GAP = 1.3, ON_BALL = 1.4;   // ボールマンには 1.4m（基準規則の「1.5m以内」に収める）
+  const keepOff = (q, p, m) => { const d = dist(q, p); if (d >= m) return q; const n = d > 1e-6 ? [(q[0] - p[0]) / d, (q[1] - p[1]) / d] : [0, 1]; return [p[0] + n[0] * m, p[1] + n[1] * m]; };
   function man(pos, ball, holder, goal) {
     const out = {};
     OFF.forEach((o, i) => {
       const p = pos[o];
-      if (o === holder) { out[DEF[i]] = toward(p, goal, 1.0); return; }
+      if (o === holder) { out[DEF[i]] = toward(p, goal, ON_BALL); return; }
       const dBall = dist(p, ball);
       // パスが飛んでいる間（holder なし）は、ボールが近づくほどボールマンへのつき方に寄せる（受けた瞬間に飛ばない）
       const onBall = holder ? 0 : 1 - ramp(dBall, .6, 2.5);
       // ディナイ：ボールの方へ1歩、少しゴール寄り（パスコースに手を出す位置）
-      const deny = toward(toward(p, ball, Math.min(1.1, dBall * .35)), goal, .5);
+      const deny = toward(toward(p, ball, Math.min(1.3, dBall * .4)), goal, .8);
       // ヘルプ：ボールと相手の間をゴール寄りに絞る（ボール・相手・自分の三角形）
       const help = frac(frac(p, ball, .3), goal, .38);
       // 5.5m より近ければディナイ、7.5m より遠ければヘルプ。その間は混ぜる（境目で飛ばない）
-      out[DEF[i]] = frac(frac(deny, help, ramp(dBall, 5.5, 7.5)), toward(p, goal, 1.0), onBall);
+      out[DEF[i]] = keepOff(frac(frac(deny, help, ramp(dBall, 5.5, 7.5)), toward(p, goal, ON_BALL), onBall), p, MARK_GAP);
     });
     return out;
   }
@@ -132,7 +135,9 @@
       else cur = Object.fromEntries(DEF.map((x, i) => {
         // ぶつかる相手：マンツーマンなら自分のマーク以外の攻め、ゾーンなら攻め全員
         const obs = OFF.filter((o, j) => isZone(mode) || j !== i).map(o => s.pos[o]).filter(Boolean);
-        return [x, step(cur[x], goal[x], obs, st[x])];
+        const q = step(cur[x], goal[x], obs, st[x]), mine = s.pos[OFF[i]];
+        // マンツーマンでは、自分のマークが近づいてきても重ならないように押し出す（引っかかりはしない）
+        return [x, !isZone(mode) && mine ? keepOff(q, mine, MARK_GAP) : q];
       }));
       // 守りどうしは重ならないように、近すぎたら半分ずつ離す（引っかかりはしない）
       DEF.forEach((a, i) => DEF.slice(i + 1).forEach(b => {
