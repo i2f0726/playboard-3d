@@ -233,8 +233,10 @@ function numberTexture(n, fill) {
   const g = cv.getContext('2d');
   g.fillStyle = fill; g.beginPath(); g.arc(64, 64, 56, 0, Math.PI * 2); g.fill();
   g.lineWidth = 8; g.strokeStyle = '#ffffff'; g.stroke();
-  g.fillStyle = [COL.self, '#facc15', '#f8fafc'].includes(fill) ? '#1a1300' : '#ffffff';   // 黄・白の地には黒い数字 g.font = 'bold 76px Segoe UI, sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
-  g.fillText(n, 64, 68);
+  g.fillStyle = [COL.self, '#facc15', '#f8fafc'].includes(fill) ? '#1a1300' : '#ffffff';   // 黄・白の地には黒い数字
+  // 背番号は2けたもあるので、けた数で文字の大きさを変えて丸に収める
+  g.font = `900 ${String(n).length > 1 ? 66 : 84}px "Segoe UI", "Hiragino Sans", sans-serif`; g.textAlign = 'center'; g.textBaseline = 'middle';
+  g.fillText(n, 64, 70, 104);
   const t = new THREE.CanvasTexture(cv); t.colorSpace = THREE.SRGBColorSpace; return t;
 }
 function capsule(r, len, mat) { const m = new THREE.Mesh(new THREE.CapsuleGeometry(r, len, 4, 10), mat); m.castShadow = true; return m; }
@@ -253,7 +255,7 @@ function makePlayer(id) {
   const ring = new THREE.Mesh(new THREE.RingGeometry(.32, .4, 32), ringMat); ring.rotation.x = -Math.PI / 2; ring.position.y = .015; g.add(ring);
   const n = id.slice(1);
   const spriteMat = new THREE.SpriteMaterial({ map: numberTexture(n, color) });
-  const sprite = new THREE.Sprite(spriteMat); sprite.scale.set(.48, .48, 1); sprite.position.y = 2.1; g.add(sprite);
+  const sprite = new THREE.Sprite(spriteMat); sprite.scale.set(.62, .62, 1); sprite.position.y = 2.2; g.add(sprite);
   scene.add(g);
   return { id, g, body, legL, legR, armL, armR, ring, ringMat, spriteMat, mJersey, side, n, face: side === 'o' ? Math.PI / 2 : -Math.PI / 2, phase: 0 };
 }
