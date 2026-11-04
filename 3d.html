@@ -415,15 +415,43 @@ function desiredCam() {
     return { pos: new THREE.Vector3(b.x + back.x, 3.4, b.z + back.z), tgt: b.clone().lerp(goal, .35), fov: 50 };
   }
   // 選手目線：顔の向き（走っている方向／止まっているときはボールの方）を見る
+  // 画面をドラッグすると首を振る（look.yaw＝左右、look.pitch＝上下）
   const p = players[selfId], fwd = new THREE.Vector3(Math.sin(p.face), 0, Math.cos(p.face));
   const eye = p.g.position.clone().add(new THREE.Vector3(0, 1.62, 0)).addScaledVector(fwd, .2);
+  fwd.applyAxisAngle(Y_UP, look.yaw);
   // 視野は「横の広さ」で決める：横に約110度（周りの味方・相手が入る広さ）。縦画面で縦に伸びすぎてゆがまないよう、縦は105度まで
   const h = THREE.MathUtils.degToRad(110), v = 2 * Math.atan(Math.tan(h / 2) / aspect);
   const fov = THREE.MathUtils.clamp(THREE.MathUtils.radToDeg(v), 72, 105);
-  return { pos: eye, tgt: eye.clone().addScaledVector(fwd, 6).setY(1.3), fov };
+  return { pos: eye, tgt: eye.clone().addScaledVector(fwd, 6).setY(1.3 + 6 * Math.tan(look.pitch)), fov };
+}
+// 選手目線の首振り：ドラッグで左右・上下に向きを変える。指を離して少したつと、ゆっくり正面（走る向き）に戻る
+const look = { yaw: 0, pitch: 0, drag: null, idle: 0 };
+const NECK_YAW = THREE.MathUtils.degToRad(110), NECK_UP = THREE.MathUtils.degToRad(35), NECK_DOWN = THREE.MathUtils.degToRad(45);
+canvas.addEventListener('pointerdown', e => {
+  if (camMode !== 'pov') return;
+  look.drag = { id: e.pointerId, x: e.clientX, y: e.clientY }; canvas.setPointerCapture(e.pointerId);
+  document.getElementById('freeHint').classList.add('gone');
+});
+canvas.addEventListener('pointermove', e => {
+  const d = look.drag; if (!d || d.id !== e.pointerId) return;
+  // 画面の端から端までドラッグすると、ちょうど画面に見えている幅だけ首が回る（指で景色をつかんで動かす感じ）
+  const vf = THREE.MathUtils.degToRad(camera.fov), hf = 2 * Math.atan(Math.tan(vf / 2) * camera.aspect);
+  look.yaw = THREE.MathUtils.clamp(look.yaw + (e.clientX - d.x) / canvas.clientWidth * hf, -NECK_YAW, NECK_YAW);
+  look.pitch = THREE.MathUtils.clamp(look.pitch + (e.clientY - d.y) / canvas.clientHeight * vf, -NECK_DOWN, NECK_UP);
+  d.x = e.clientX; d.y = e.clientY; look.idle = 0;
+});
+const endLook = e => { if (look.drag && look.drag.id === e.pointerId) look.drag = null; };
+canvas.addEventListener('pointerup', endLook); canvas.addEventListener('pointercancel', endLook);
+function relaxLook(dt) {
+  if (look.drag) return;
+  look.idle += dt;
+  if (look.idle < 1.2) return;   // 離してから1.2秒はその向きのまま
+  const k = 1 - Math.exp(-dt * 2.5);
+  look.yaw -= look.yaw * k; look.pitch -= look.pitch * k;
 }
 function updateCamera(dt, snap) {
   if (camMode === 'free') { controls.update(); return; }
+  if (camMode === 'pov') relaxLook(dt);
   const d = desiredCam(), a = snap ? 1 : 1 - Math.exp(-dt * (camMode === 'pov' ? 14 : 4));
   camPos.lerp(d.pos, a); camTgt.lerp(d.tgt, a); camUp.lerp(d.up || Y_UP, a).normalize();
   camera.fov += (d.fov - camera.fov) * a; camera.updateProjectionMatrix();
@@ -440,14 +468,19 @@ function updateCamera(dt, snap) {
 let clock = 0, playing = true, speed = 1, scrubbing = false;
 const SPEEDS = [.5, 1, 1.5], HOLD = 1200;
 const seek = document.getElementById('seek'), playBtn = document.getElementById('playBtn'), spdBtn = document.getElementById('spd');
+const FREE_HINT = document.getElementById('freeHint').innerHTML;
 function setCam(m) {
   camMode = m;
   controls.enabled = m === 'free';
   // 自由モード：さわるまではゆっくり自動で回る。最初の数秒は操作の案内を出す
   controls.autoRotate = m === 'free'; controls.autoRotateSpeed = 1.2;
-  if (m === 'free') {
+  look.yaw = look.pitch = 0; look.drag = null;
+  if (m === 'free' || m === 'pov') {
     const h = document.getElementById('freeHint'); h.classList.remove('gone'); clearTimeout(setCam.hintTimer);
+    h.innerHTML = m === 'free' ? FREE_HINT : '<b>選手目線</b><br>ドラッグ … 首を振って周りを見る<br>指を離すと、前に戻ります';
     setCam.hintTimer = setTimeout(() => h.classList.add('gone'), 3500);
+  }
+  if (m === 'free') {
     document.querySelector('.cam-free').classList.remove('pulse');
     try { localStorage.setItem('pb-free-seen', '1'); } catch (e) {}
   }
