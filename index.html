@@ -154,7 +154,10 @@ button.tritem.on { background: var(--fg); color: var(--bg); border-color: var(--
 /* メインの3つ（配置・録画・再生）：横幅いっぱいに広げて大きく。選んでいないときも番号をモードの色にして、どれが何か分かるように */
 #modeRow { flex-wrap: nowrap; gap: 6px; }
 #modeRow .seg { flex: 1; min-width: 0; border-width: 2px; border-radius: 14px; }
-#modeRow .seg button { flex: 1; min-width: 0; min-height: 54px; padding: 6px 4px; font-size: 17px; gap: 6px; }
+#modeRow .seg button { flex: 1; min-width: 0; min-height: 54px; padding: 6px 4px; font-size: 17px; gap: 6px; background: #3a434b; color: #fff; }   /* 選んでいないときはグレーの地 */
+body.t-light #modeRow .seg button { background: #dde3e8; color: #0d1a22; }
+#modeRow .seg button + button { border-left-color: rgba(0,0,0,.35); }
+#modeRow #m-setup.on { background: var(--m-setup); color: #fff; } #modeRow #m-rec.on { background: var(--m-rec); color: #fff; } #modeRow #m-play.on { background: var(--m-play); color: #fff; }
 #modeRow .mn { width: 22px; height: 22px; font-size: 13px; color: #fff; }
 #m-setup .mn { background: var(--m-setup); } #m-rec .mn { background: var(--m-rec); } #m-play .mn { background: var(--m-play); }
 #modeRow .seg button.on { box-shadow: inset 0 -4px 0 rgba(0,0,0,.25); }
