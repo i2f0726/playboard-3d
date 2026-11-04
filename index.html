@@ -149,9 +149,14 @@ button.tritem.on { background: var(--fg); color: var(--bg); border-color: var(--
 .app.side .top { grid-column: 1 / -1; }
 .app.side .stage { grid-column: 1; grid-row: 2; }
 .app.side .bottom { grid-column: 2; grid-row: 2; align-content: start; min-height: 0; overflow-y: auto; }
-/* 「配置・録画・再生」は、どのモードでも同じ場所に：ふだんは画面のいちばん下、横並び（side）のときは右の列のいちばん上。「表示」の段はそのすぐ隣 */
-#modeRow { order: 10; } #viewPanel { order: 9; }
-.app.side #modeRow { order: -2; } .app.side #viewPanel { order: -1; }
+/* 「配置・録画・再生」は、どのモードでも同じ場所に：ふだんは画面のいちばん下、横並び（side）のときは右の列のいちばん上 */
+#modeRow { order: 10; }
+.app.side #modeRow { order: -1; }
+/* 「表示」のポップアップ：左に項目名、右にボタン */
+.viewsheet { width: min(420px, 100%); }
+.vrow { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 4px 0; border-bottom: 1px solid var(--line); }
+.vlabel { width: 7em; font-size: 14px; font-weight: 700; color: var(--muted); }
+.vrow .viewnote { flex-basis: 100%; }
 /* メインの3つ（配置・録画・再生）：横幅いっぱいに広げて大きく。選んでいないときも番号をモードの色にして、どれが何か分かるように */
 #modeRow { flex-wrap: nowrap; gap: 6px; }
 #modeRow .seg { flex: 1; min-width: 0; border-width: 2px; border-radius: 14px; }
@@ -422,28 +427,14 @@ button.tritem.on { background: var(--fg); color: var(--bg); border-color: var(--
       <button id="playBtn" class="primary">▶ 再生</button>
       <button id="view3dBtn" class="btn3d"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><path d="M12 2.5 21 7.5v9L12 21.5 3 16.5v-9Z"/><path d="M3 7.5 12 12.5 21 7.5M12 12.5v9"/></svg>3Dで見る</button>
     </div>
-    <!-- 上から：モードと「表示」 →（表示の設定）→ 今のモードのボタン → 説明 -->
+    <!-- 今のモードのボタン → 説明 → いちばん下にモードと「表示」 -->
     <div class="row" id="modeRow">
       <div class="seg" role="tablist" aria-label="モード">
         <button id="m-setup" data-mode="setup"><i class="mn">1</i>配置</button>
         <button id="m-rec" data-mode="rec"><i class="mn">2</i><span class="recdot"></span>録画</button>
         <button id="m-play" data-mode="play"><i class="mn">3</i>再生</button>
       </div>
-      <button id="viewBtn" aria-expanded="false"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg>表示</button>
-    </div>
-    <!-- 表示の設定：コートの見え方はここにまとめる（「表示」で開く・閉じる） -->
-    <div class="row viewpanel" id="viewPanel" hidden>
-      <div class="seg" id="viewSeg" aria-label="見え方">
-        <button id="v2d">平面</button>
-        <button id="v3d">立体</button>
-      </div>
-      <span class="viewnote" id="viewNote" hidden>※ 立体は「再生」のときだけ</span>
-      <div class="seg" aria-label="コートの広さ">
-        <button id="c-half">ハーフ</button>
-        <button id="c-full">オール</button>
-      </div>
-      <button id="orientBtn">縦向きにする</button>
-      <button id="bgBtn">背景：白</button>
+      <button id="viewBtn" aria-haspopup="dialog"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg>表示</button>
     </div>
     <div class="row" id="p-setup">
       <button id="lineupBtn" class="ibtn"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 3 3 6l2 4 2-1v12h10V9l2 1 2-4-5-3c-.5 1.5-2 2.5-4 2.5S8.5 4.5 8 3Z"/></svg><span>選手を当てる</span></button>
@@ -648,11 +639,11 @@ button.tritem.on { background: var(--fg); color: var(--bg); border-color: var(--
         <figure><span class="hfig" data-fig="bg-dark"></span><figcaption>背景：黒</figcaption></figure>
       </div>
       <ul>
-        <li>モードのボタンの右の <span class="kb">表示</span> を押すと、下の設定がまとめて出ます。</li>
-        <li><span class="kb">背景</span>：白 → 木目 → 黒。</li>
+        <li>モードのボタンの右の <span class="kb">表示</span> を押すと、下の設定をまとめた画面が開きます。</li>
+        <li><span class="kb">背景</span>：白・木目・黒から選びます。</li>
         <li><span class="kb">平面</span><span class="kb">立体</span>：上から見るか、斜めから見るか。<b>「再生」のときだけ</b>切り替えられます（配置・録画は指で動かすので、いつも平面です）。</li>
         <li><span class="kb">ハーフ</span><span class="kb">オール</span>：コートの半面か全面か。</li>
-        <li><span class="kb">縦向きにする</span>：スマホを縦に持つときに見やすい向き。</li>
+        <li><span class="kb">横</span><span class="kb">縦</span>：コートの向き。縦はスマホを縦に持つときに見やすい向き。</li>
       </ul>
     </details>
 
@@ -673,6 +664,23 @@ button.tritem.on { background: var(--fg); color: var(--bg); border-color: var(--
     <div class="row"><span style="flex:1"></span><button data-close class="primary">閉じる</button></div>
   </div>
 </div>
+<!-- 表示の設定：コートの見え方はここにまとめる（「表示」で開くポップアップ。どのモードでも同じ形） -->
+<div class="overlay" id="viewDlg" hidden>
+  <div class="sheet viewsheet">
+    <div class="sheethead"><h2>表示</h2><button class="xclose" data-close aria-label="閉じる">×</button></div>
+    <div class="vrow"><span class="vlabel">コートの広さ</span>
+      <div class="seg" aria-label="コートの広さ"><button id="c-half">ハーフ</button><button id="c-full">オール</button></div></div>
+    <div class="vrow"><span class="vlabel">コートの向き</span>
+      <div class="seg" aria-label="コートの向き"><button data-orient="h">横</button><button data-orient="v">縦</button></div></div>
+    <div class="vrow"><span class="vlabel">背景</span>
+      <div class="seg" id="bgSeg" aria-label="背景"><button data-bg="白">白</button><button data-bg="木目">木目</button><button data-bg="黒">黒</button></div></div>
+    <div class="vrow"><span class="vlabel">見え方</span>
+      <div class="seg" id="viewSeg" aria-label="見え方"><button id="v2d">平面</button><button id="v3d">立体</button></div>
+      <span class="viewnote" id="viewNote" hidden>立体は「再生」のときだけ選べます</span></div>
+    <button class="primary" data-close>OK</button>
+  </div>
+</div>
+
 <div class="overlay" id="lineupDlg" hidden>
   <div class="sheet">
     <div class="sheethead"><h2>選手を当てる</h2><button class="xclose" data-close aria-label="閉じる">×</button></div>
@@ -1439,12 +1447,8 @@ $('defBtn').onclick = () => {
   if (play.showDef && play.use && !play.use.some(id => id[0] === 'x')) play.use = [...play.use, ...DEF];
   save(); updateUI(); drawEdit();
 };
-// 「表示」：平面・立体、ハーフ・オール、向き、背景をまとめた段を開く・閉じる
-$('viewBtn').onclick = () => {
-  const open = $('viewPanel').hidden;
-  $('viewPanel').hidden = !open; $('viewBtn').classList.toggle('on', open); $('viewBtn').setAttribute('aria-expanded', open);
-  fitLayout();
-};
+// 「表示」：平面・立体、ハーフ・オール、向き、背景をまとめたポップアップを開く
+$('viewBtn').onclick = () => { $('viewDlg').hidden = false; };
 // モードごとに出すボタンの段・道具箱・自分の番号
 function showPanels(m, cnt) {
   $('p-setup').hidden = m !== 'setup'; $('p-rec').hidden = m !== 'rec'; $('p-play').hidden = m !== 'play';
@@ -1514,15 +1518,15 @@ document.querySelectorAll('.dfmode').forEach(b => b.onclick = () => {
   else if (next.id === 'manual') toast('手動：守りも自分でなぞって動かします');
   stopPlay(); updateUI(); mode === 'play' ? drawPlayIdle() : drawEdit();
 });
-// 背景：白 → 木目 → 黒 → 白 …
-$('bgBtn').onclick = () => {
-  const next = !prefs.light ? 'white' : prefs.wood ? 'dark' : 'wood';
-  prefs.wood = next === 'wood';
+// 背景：白・木目・黒 から選ぶ
+document.querySelectorAll('[data-bg]').forEach(b => b.onclick = () => {
+  const next = b.dataset.bg;
+  prefs.wood = next === '木目';
   try { localStorage.setItem('pb-floor', prefs.wood ? 'wood' : 'plain'); } catch (e) {}
-  setLight(next !== 'dark');
-};
+  setLight(next !== '黒');
+});
 function savePrefs() { try { localStorage.setItem('pb-orient', prefs.vertical ? 'v' : 'h'); localStorage.setItem('pb-3d', prefs.threeD ? '1' : '0'); } catch (e) {} }
-$('orientBtn').onclick = () => { prefs.vertical = !prefs.vertical; savePrefs(); applyBoard(); };
+document.querySelectorAll('[data-orient]').forEach(b => b.onclick = () => { prefs.vertical = b.dataset.orient === 'v'; savePrefs(); applyBoard(); });
 $('v2d').onclick = () => { prefs.threeD = false; savePrefs(); applyBoard(); };
 $('v3d').onclick = () => { prefs.threeD = true; savePrefs(); applyBoard(); };
 $('resetBtn').onclick = () => ask('動きを全部消しますか？', '選手の配置は残り、録画した動きとパスがすべて消えます。', () => { play.steps = [{ moves: [] }]; cur = 0; save(); updateUI(); drawEdit(); });
@@ -1613,8 +1617,8 @@ function updateUI(full = true) {
   $('prevStep').disabled = cur === 0; $('nextStep').disabled = cur >= play.steps.length - 1;
   $('defBtn').querySelector('span').textContent = play.showDef ? 'DFを隠す' : 'DFを表示';
   $('defBtn').classList.toggle('off', !play.showDef);
-  $('bgBtn').textContent = `背景：${bgName()}`;
-  $('orientBtn').textContent = prefs.vertical ? '横向きにする' : '縦向きにする';
+  document.querySelectorAll('[data-bg]').forEach(b => b.classList.toggle('on', b.dataset.bg === bgName()));
+  document.querySelectorAll('[data-orient]').forEach(b => b.classList.toggle('on', (b.dataset.orient === 'v') === prefs.vertical));
   $('v2d').classList.toggle('on', !prefs.threeD); $('v3d').classList.toggle('on', prefs.threeD);
   $('viewSeg').hidden = mode !== 'play'; $('viewNote').hidden = mode === 'play';
   $('b3d').classList.toggle('three', view3D());
