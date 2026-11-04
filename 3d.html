@@ -344,8 +344,9 @@ function passTarget(f, id) {
   for (const { m, dur, s } of f.seg.B) if (m.k === 'pass' && m.from === id && f.local >= s - LOOK_BEFORE_PASS && f.local < s + dur) return m.to;
   return null;
 }
+let lastFrame = null;   // いま表示している瞬間（選手目線のカメラが使う）
 function updateScene(t, dt) {
-  const f = posWithDef(t), prev = posWithDef(Math.max(0, t - 120));
+  const f = lastFrame = posWithDef(t), prev = posWithDef(Math.max(0, t - 120));
   drawPaths(f);
   const ballGuess = f.holder ? W(f.pos[f.holder]) : f.flight && f.flight.m.to ? W(f.pos[f.flight.m.to]) : lastBall;
   for (const id of [...OFF, ...DEF]) {
@@ -427,6 +428,10 @@ function desiredCam() {
   // 画面をドラッグすると首を振る（look.yaw＝左右、look.pitch＝上下）
   const p = players[selfId], fwd = new THREE.Vector3(Math.sin(p.face), 0, Math.cos(p.face));
   const eye = p.g.position.clone().add(new THREE.Vector3(0, 1.62, 0)).addScaledVector(fwd, .2);
+  // ふだんはボールを見る（走っていても）。自分が持っているときと、パスを出すときは体の向き（ゴール／受ける相手）
+  const f = lastFrame, mine = f && (f.holder === selfId || passTarget(f, selfId));
+  const toBall = new THREE.Vector3(b.x - eye.x, 0, b.z - eye.z);
+  if (!mine && toBall.lengthSq() > .25) fwd.copy(toBall.normalize());
   fwd.applyAxisAngle(Y_UP, look.yaw);
   // 視野は「横の広さ」で決める：横に約110度（周りの味方・相手が入る広さ）。縦画面で縦に伸びすぎてゆがまないよう、縦は105度まで
   const h = THREE.MathUtils.degToRad(110), v = 2 * Math.atan(Math.tan(h / 2) / aspect);
