@@ -257,7 +257,7 @@ function makePlayer(id) {
   const spriteMat = new THREE.SpriteMaterial({ map: numberTexture(n, color) });
   const sprite = new THREE.Sprite(spriteMat); sprite.scale.set(.62, .62, 1); sprite.position.y = 2.2; g.add(sprite);
   scene.add(g);
-  return { id, g, body, legL, legR, armL, armR, ring, ringMat, spriteMat, mJersey, side, n, face: side === 'o' ? Math.PI / 2 : -Math.PI / 2, phase: 0 };
+  return { id, g, body, legL, legR, armL, armR, ring, ringMat, sprite, spriteMat, mJersey, side, n, face: side === 'o' ? Math.PI / 2 : -Math.PI / 2, phase: 0 };
 }
 const players = {};
 [...OFF, ...DEF].forEach(id => players[id] = makePlayer(id));
@@ -577,7 +577,28 @@ function tick(ms) {
   updateScene(t, dt);
   updateCamera(dt, false);
   if (!scrubbing) seek.value = t / T.total * 1000;
+  sizeLabels();
   renderer.render(scene, camera);
+}
+
+// 頭の上の番号札：コート上の大きさ(0.62m)だけで決めると、PCの引きのカメラでは画面上で小さくなる。
+// 画面の短いほうの辺に合わせた最小の大きさ(px)を下回らないように、遠い札ほど大きくする（大きくしても下の端は頭の上に残す）
+// スマホ(短辺390px)では30px、PC(短辺900px)では58pxくらい
+const LABEL_M = .62, LABEL_Y = 2.2, LABEL_MAX_M = 1.5;
+const _lp = new THREE.Vector3(), _cd = new THREE.Vector3();
+function sizeLabels() {
+  const H = renderer.domElement.clientHeight || innerHeight, W = renderer.domElement.clientWidth || innerWidth;
+  const minPx = THREE.MathUtils.clamp(Math.min(W, H) * .065, 30, 64);
+  const tanHalf = Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2);
+  camera.getWorldDirection(_cd);
+  for (const p of Object.values(players)) {
+    _lp.copy(p.g.position).setY(LABEL_Y);
+    const depth = Math.max(.5, _lp.sub(camera.position).dot(_cd));
+    const pxPerM = H / (2 * depth * tanHalf);
+    const s = THREE.MathUtils.clamp(minPx / pxPerM, LABEL_M, LABEL_MAX_M);
+    p.sprite.scale.set(s, s, 1);
+    p.sprite.position.y = LABEL_Y + (s - LABEL_M) / 2;
+  }
 }
 </script>
 </body>
