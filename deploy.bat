@@ -79,6 +79,12 @@ if defined DRY (
 rem --- 公開ページ（GitHub Pages）がまだなら有効にする ---
 :pages
 if not defined DRY (
+  rem gh が未ログインでも、アップロードは済んでいるので失敗にしない（公開ページの設定は最初の1回だけ必要）
+  gh auth status >nul 2>&1
+  if errorlevel 1 (
+    echo アップロードは完了しました。gh が未ログインのため、公開ページの設定確認は省きました。
+    goto :done
+  )
   gh api repos/%REPO%/pages >nul 2>&1
   if errorlevel 1 (
     echo 公開ページ（GitHub Pages）を有効にしています...
