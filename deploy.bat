@@ -1,6 +1,6 @@
 @echo off
 rem ============================================================
-rem  PLAYBOARD 3D ― GitHub に公開（ダブルクリックで実行）
+rem  HOOP SIGHT 3D ― GitHub に公開（ダブルクリックで実行）
 rem   1. 変更があれば記録（コミット）
 rem   2. はじめての時だけ GitHub にリポジトリを作り、公開ページ（GitHub Pages）を有効にする
 rem   3. GitHub へアップロード（push）
@@ -18,7 +18,7 @@ set "DRY="
 if /i "%~1"=="--dry" set "DRY=1"
 
 echo.
-echo ===== PLAYBOARD 3D デプロイ =====
+echo ===== HOOP SIGHT 3D デプロイ =====
 echo.
 
 rem --- 1. 未記録の変更があるか ---
